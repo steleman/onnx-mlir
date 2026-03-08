@@ -25,7 +25,7 @@ using namespace onnx_mlir;
 namespace onnx_mlir {
 
 LogicalResult ONNXOneHotOpShapeHelper::computeShape() {
-  ONNXOneHotOp oneHotOp = mlir::dyn_cast<ONNXOneHotOp>(op);
+  ONNXOneHotOp oneHotOp = llvm::cast<ONNXOneHotOp>(op);
   ONNXOneHotOpAdaptor operandAdaptor(operands);
   Value indices = operandAdaptor.getIndices();
   if (!hasShapeAndRank(indices)) {

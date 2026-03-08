@@ -14,7 +14,7 @@ import os
 import importlib
 import pkgutil
 
-if __package__ == "onnxmlir" or __package__ == "torch_onnxmlir":
+if __package__ == "onnxmlir" or __package__ == "onnxmlirtorch":
     loader = pkgutil.get_loader(__package__)
     PyRuntimeC_module = os.path.join(
         os.path.dirname(loader.get_filename(__package__)), "libs"
@@ -40,7 +40,6 @@ else:
 
 
 class OMExecutionSession(OMExecutionSession_):
-
     def run(self, inputs):
         # Prepare arguments to call sess.run
         pyrun_inputs = []

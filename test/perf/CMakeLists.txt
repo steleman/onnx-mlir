@@ -6,8 +6,8 @@ add_onnx_mlir_library(PerfLib
 
   LINK_LIBS PUBLIC
   benchmark 
-  LLVMSupport
-  )
+  LLVMSupport)
+
 
 add_custom_target(perf)
 set_target_properties(perf PROPERTIES FOLDER "Perf")
@@ -44,7 +44,7 @@ function(add_perf_unittest test_name)
   set_tests_properties(${test_name} PROPERTIES LABELS perf)
 endfunction()
 
-set(TEST_LINK_LIBS ModelLib PerfLib)
+set(TEST_LINK_LIBS ModelLib PerfLib ONNX::onnx_proto ONNX::onnx)
 
 add_perf_unittest(PerfGemm
   PerfGemm.cpp

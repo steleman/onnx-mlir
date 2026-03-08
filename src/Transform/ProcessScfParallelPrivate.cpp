@@ -24,10 +24,9 @@
 //   }
 //
 //===----------------------------------------------------------------------===//
-#include "mlir/Transforms/Passes.h"
 
-#include "src/Pass/Passes.hpp"
 #include "src/Transform/ProcessScfParallelPrivate.hpp"
+#include "src/Pass/Passes.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -46,12 +45,6 @@
 using namespace mlir;
 
 namespace {
-
-/* All the implementation of this pass is put in the anonymous name space
- * to hide from ourside.
- */
-#define GEN_PASS_DEF_PROCESSSCFPARALLELPRIVATEPASS
-#include "src/Transform/Passes.h.inc"
 
 struct ProcessScfParallelWithoutScopePattern
     : public OpRewritePattern<scf::ParallelOp> {
@@ -109,11 +102,26 @@ struct ProcessScfParallelWithoutScopePattern
 };
 
 struct ProcessScfParallelPrivatePass
-    : public impl::ProcessScfParallelPrivatePassBase<
-          ProcessScfParallelPrivatePass> {
+    : public PassWrapper<ProcessScfParallelPrivatePass,
+          OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ProcessScfParallelPrivatePass)
 
+  ProcessScfParallelPrivatePass() {}
+  ProcessScfParallelPrivatePass(const ProcessScfParallelPrivatePass &pass)
+      : mlir::PassWrapper<ProcessScfParallelPrivatePass,
+            OperationPass<func::FuncOp>>() {}
+
+  StringRef getArgument() const override { return "scf-parallel-private"; }
+
+  StringRef getDescription() const override {
+    return "Process scf parallel for op to support private variables.";
+  }
+
   void runOnOperation() final;
+
+  typedef PassWrapper<ProcessScfParallelPrivatePass,
+      OperationPass<func::FuncOp>>
+      BaseType;
 };
 
 void ProcessScfParallelPrivatePass::runOnOperation() {
@@ -148,8 +156,6 @@ void onnx_mlir::getParallelPrivateScfToScfPatterns(
 /*!
  * Create a SCF Parallel Private pass.
  */
-namespace onnx_mlir {
-std::unique_ptr<mlir::Pass> createProcessScfParallelPrivatePass() {
+std::unique_ptr<mlir::Pass> onnx_mlir::createProcessScfParallelPrivatePass() {
   return std::make_unique<ProcessScfParallelPrivatePass>();
 }
-} // namespace onnx_mlir

@@ -182,9 +182,9 @@ struct ONNXElementwiseUnaryOpLoweringToStablehlo<ONNXEluOp>
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op->getLoc();
-    ONNXEluOp eluOp = mlir::dyn_cast<ONNXEluOp>(op);
-    ONNXEluOpAdaptor operandAdaptor(operands, eluOp);
-    double alpha = eluOp.getAlpha().convertToDouble();
+    ONNXEluOpAdaptor operandAdaptor(operands);
+    ONNXEluOp EluOp = llvm::cast<ONNXEluOp>(op);
+    double alpha = EluOp.getAlpha().convertToDouble();
 
     Type resultType = *op->result_type_begin();
     Value inp = operandAdaptor.getX();
@@ -215,10 +215,10 @@ struct ONNXElementwiseUnaryOpLoweringToStablehlo<ONNXHardSigmoidOp>
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op->getLoc();
-    ONNXHardSigmoidOp hardSigmoidOp = mlir::dyn_cast<ONNXHardSigmoidOp>(op);
-    ONNXHardSigmoidOpAdaptor operandAdaptor(operands, hardSigmoidOp);
-    double alpha = hardSigmoidOp.getAlpha().convertToDouble();
-    double beta = hardSigmoidOp.getBeta().convertToDouble();
+    ONNXHardSigmoidOpAdaptor operandAdaptor(operands);
+    ONNXHardSigmoidOp HardSigmoidOp = llvm::cast<ONNXHardSigmoidOp>(op);
+    double alpha = HardSigmoidOp.getAlpha().convertToDouble();
+    double beta = HardSigmoidOp.getBeta().convertToDouble();
     Value inp = operandAdaptor.getX();
     ShapedType inpType = mlir::dyn_cast_or_null<ShapedType>(inp.getType());
     if (inpType == nullptr)
@@ -245,8 +245,7 @@ struct ONNXElementwiseUnaryOpLoweringToStablehlo<ONNXReluOp>
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op->getLoc();
-    auto reluOp = mlir::dyn_cast<ONNXReluOp>(op);
-    ONNXReluOpAdaptor adaptor(operands, reluOp);
+    ONNXReluOpAdaptor adaptor(operands, op->getAttrDictionary());
     Value inp = adaptor.getX();
     ShapedType inpType = mlir::dyn_cast_or_null<ShapedType>(inp.getType());
     if (inpType == nullptr)
@@ -269,8 +268,7 @@ struct ONNXElementwiseUnaryOpLoweringToStablehlo<ONNXLeakyReluOp>
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op->getLoc();
-    auto leakyReluOp = mlir::dyn_cast<ONNXLeakyReluOp>(op);
-    ONNXLeakyReluOpAdaptor adaptor(operands, leakyReluOp);
+    ONNXLeakyReluOpAdaptor adaptor(operands, op->getAttrDictionary());
     Value inp = adaptor.getX();
     llvm::APFloat alpha = adaptor.getAlpha();
     ShapedType inpType = mlir::dyn_cast_or_null<ShapedType>(inp.getType());
@@ -298,8 +296,7 @@ struct ONNXElementwiseUnaryOpLoweringToStablehlo<ONNXCastOp>
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Location loc = op->getLoc();
-    auto castOp = mlir::dyn_cast<ONNXCastOp>(op);
-    ONNXCastOpAdaptor adaptor(operands, castOp);
+    ONNXCastOpAdaptor adaptor(operands, op->getAttrDictionary());
     Value inp = adaptor.getInput();
     Type elementToType = adaptor.getTo();
     ShapedType inpType = mlir::dyn_cast_or_null<ShapedType>(inp.getType());

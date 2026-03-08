@@ -4,7 +4,7 @@
 
 //===================-- PerfGemm.cpp - Simple performance tests -=============//
 //
-// Copyright 2022-2026 The IBM Research Authors.
+// Copyright 2022 The IBM Research Authors.
 //
 // =============================================================================
 //
@@ -18,6 +18,7 @@
 
 #include <benchmark/benchmark.h>
 
+#include "include/OnnxMlirCompiler.h"
 #include "test/modellib/ModelLib.hpp"
 #include "test/perf/PerfHelper.hpp"
 

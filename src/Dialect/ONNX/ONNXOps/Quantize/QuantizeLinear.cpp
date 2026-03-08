@@ -26,8 +26,7 @@ namespace onnx_mlir {
 
 template <>
 LogicalResult ONNXQuantizeLinearOpShapeHelper::computeShape() {
-  auto qlOp = mlir::dyn_cast<ONNXQuantizeLinearOp>(op);
-  ONNXQuantizeLinearOpAdaptor operandAdaptor(operands, qlOp);
+  ONNXQuantizeLinearOpAdaptor operandAdaptor(operands, op->getAttrDictionary());
   DimsExpr outputDims;
   createIE->getShapeAsDims(operandAdaptor.getX(), outputDims);
   // Save the final result.

@@ -39,6 +39,10 @@ typedef void(sortFunctionType(void *base, size_t nmemb, size_t size,
     compareFunctionType *compar, void *data));
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //
 // === Function Prototypes (Declarations) ===
 //
@@ -61,5 +65,9 @@ void omTensorSort(OMTensor *orderTensor, const OMTensor *inputTensor,
 
 void omTensorTopK(OMTensor *orderTensor, const OMTensor *inputTensor,
     uint64_t axis, uint64_t ascending, uint64_t k_u64, uint64_t sorted);
+
+#ifdef __cplusplus
+} // closing extern "C"
+#endif
 
 #endif // ONNX_MLIR_OMSORT_H

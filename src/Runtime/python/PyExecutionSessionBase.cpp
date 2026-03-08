@@ -4,7 +4,7 @@
 
 //===- PyExecutionSessionBase.cpp - PyExecutionSessionBase Implementation -===//
 //
-// Copyright 2019-2026 The IBM Research Authors.
+// Copyright 2019-2020 The IBM Research Authors.
 //
 // =============================================================================
 //
@@ -12,9 +12,6 @@
 // contains shared code for PyExecutionSession and PyOMCompileExecutionSession.
 //
 //===----------------------------------------------------------------------===//
-
-// TODO: base class is no longer needed, should be merged with
-// PyExecutionSession.
 
 #ifndef ENABLE_PYRUNTIME_LIGHT
 #include "src/Support/SmallFP.hpp"
@@ -26,8 +23,7 @@
 #include "src/Support/SuppressWarnings.h"
 
 SUPPRESS_WARNINGS_PUSH
-// #include "onnx/onnx_pb.h"
-#include "src/Runtime/python/TensorProto.hpp"
+#include "onnx/onnx_pb.h"
 SUPPRESS_WARNINGS_POP
 
 #include "PyExecutionSessionBase.hpp"
@@ -120,28 +116,26 @@ std::vector<py::array> PyExecutionSessionBase::pyRun(
     const std::vector<py::array> &shapesPyArray,
     const std::vector<py::array> &stridesPyArray) {
   if (!isInitialized)
-    throw onnx_mlir::ExecutionSessionException(
-        "uninitialized PyExecutionSession");
+    throw std::runtime_error(reportInitError());
   if (!_entryPointFunc)
-    throw onnx_mlir::ExecutionSessionException(
-        "Undefined entry point in run function");
+    throw std::runtime_error(reportUndefinedEntryPointIn("run"));
 
   // 1. Process inputs.
   TIMING_INIT_START(process_input);
   std::vector<OMTensor *> omts;
   if (inputsPyArray.size() != shapesPyArray.size())
-    throw onnx_mlir::ExecutionSessionException(
-        "numbers of inputs and shapes should be the same");
+    throw std::runtime_error(
+        reportPythonError("numbers of inputs and shapes should be the same"));
   if (inputsPyArray.size() != stridesPyArray.size())
-    throw onnx_mlir::ExecutionSessionException(
-        "numbers of inputs and strides should be the same");
+    throw std::runtime_error(
+        reportPythonError("numbers of inputs and strides should be the same"));
   for (size_t argId = 0; argId < inputsPyArray.size(); argId++) {
     auto inputPyArray = inputsPyArray[argId];
     auto shapePyArray = shapesPyArray[argId];
     auto stridePyArray = stridesPyArray[argId];
     if (!inputPyArray.flags() || !py::array::c_style)
-      throw onnx_mlir::ExecutionSessionException(
-          "Expect contiguous python array.");
+      throw std::runtime_error(
+          reportPythonError("Expect contiguous python array."));
 
     void *dataPtr;
     int64_t ownData = 0;
@@ -214,14 +208,14 @@ std::vector<py::array> PyExecutionSessionBase::pyRun(
       std::stringstream errStr;
       errStr << "Numpy type not supported: " << inputPyArray.dtype()
              << std::endl;
-      throw onnx_mlir::ExecutionSessionException(errStr.str());
+      throw std::runtime_error(reportPythonError(errStr.str()));
     }
     OMTensor *inputOMTensor = NULL;
     if (dtype == ONNX_TYPE_STRING) {
       void *tensorBuffer = generateOMTensorBufferForStringData(inputPyArray);
       if (tensorBuffer == NULL)
-        throw onnx_mlir::ExecutionSessionException(
-            "fail to allocate Tensor buffer for string data");
+        throw std::runtime_error(reportPythonError(
+            "fail to allocate Tensor buffer for string data"));
       inputOMTensor = omTensorCreateWithOwnership(
           tensorBuffer, shape, ndim, dtype, /*own_data=*/true);
 
@@ -247,7 +241,7 @@ std::vector<py::array> PyExecutionSessionBase::pyRun(
   OMTensorList *wrappedInput = omTensorListCreate(omts.data(), omts.size());
   auto *wrappedOutput = _entryPointFunc(wrappedInput);
   if (!wrappedOutput)
-    throw onnx_mlir::ExecutionSessionException("error while runing the model");
+    throw std::runtime_error(reportErrnoError());
   TIMING_STOP_PRINT(inference);
 
   // 3. Process outputs.
@@ -311,7 +305,8 @@ std::vector<py::array> PyExecutionSessionBase::pyRun(
       std::stringstream errStr;
       errStr << "Unsupported ONNX type in OMTensor: "
              << omTensorGetDataType(omt) << std::endl;
-      throw onnx_mlir::ExecutionSessionException(errStr.str());
+
+      throw std::runtime_error(reportPythonError(errStr.str()));
     }
     }
     TIMING_STOP_PRINT(process_output_types);
@@ -366,8 +361,7 @@ void PyExecutionSessionBase::pySetEntryPoint(std::string entryPointName) {
 
 std::vector<std::string> PyExecutionSessionBase::pyQueryEntryPoints() {
   if (!isInitialized)
-    throw onnx_mlir::ExecutionSessionException(
-        "uninitialized PyExecutionSession");
+    throw std::runtime_error(reportInitError());
   assert(_queryEntryPointsFunc && "Query entry point not loaded.");
   const char **entryPointArr = _queryEntryPointsFunc(NULL);
 
@@ -391,12 +385,13 @@ std::string PyExecutionSessionBase::pyOutputSignature() {
 // =============================================================================
 // Error reporting
 
-// =============================================================================
-// Instrumentation reporting
-void PyExecutionSessionBase::pyPrintInstrumentation() {
-  TIMING_INIT_START(print_instrumentation);
-  printInstrumentation();
-  TIMING_STOP_PRINT(print_instrumentation);
+std::string PyExecutionSessionBase::reportPythonError(
+    std::string errorStr) const {
+  errno = EFAULT; // Bad Address.
+  std::stringstream errStr;
+  errStr << "Execution session: encountered python error `" << errorStr << "'."
+         << std::endl;
+  return errStr.str();
 }
 
 } // namespace onnx_mlir

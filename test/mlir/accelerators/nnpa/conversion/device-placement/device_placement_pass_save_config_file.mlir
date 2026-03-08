@@ -9,50 +9,26 @@ func.func @test_save_config_file(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> 
 
 // CHECK-LABEL test_save_config_file
 // CHECK: {
-// CHECK:   "nnpa_ops_config": [
+// CHECK:   "device_placement": [
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.Relu",
-// CHECK:           "onnx_node_name": "Relu_0"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "device": "nnpa"
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "device": "nnpa",
+// CHECK:       "node_type": "onnx.Relu",
+// CHECK:       "onnx_node_name": "Relu_0"
 // CHECK:     },
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.Relu",
-// CHECK:           "onnx_node_name": "Relu_1"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "device": "cpu"
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "device": "cpu",
+// CHECK:       "node_type": "onnx.Relu",
+// CHECK:       "onnx_node_name": "Relu_1"
 // CHECK:     },
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.Relu",
-// CHECK:           "onnx_node_name": "Relu_2"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "device": "nnpa"
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "device": "nnpa",
+// CHECK:       "node_type": "onnx.Relu",
+// CHECK:       "onnx_node_name": "Relu_2"
 // CHECK:     },
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.Sigmoid",
-// CHECK:           "onnx_node_name": "Sigmoid_0"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "device": "nnpa"
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "device": "nnpa",
+// CHECK:       "node_type": "onnx.Sigmoid",
+// CHECK:       "onnx_node_name": "Sigmoid_0"
 // CHECK:     }
 // CHECK:   ]
 // CHECK: }

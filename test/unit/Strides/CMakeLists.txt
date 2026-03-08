@@ -5,4 +5,6 @@ add_unittest(TestStrides
 
   LINK_LIBS PRIVATE
   OMONNXOps
-  )
+  ONNX::onnx_proto
+  ONNX::onnx)
+

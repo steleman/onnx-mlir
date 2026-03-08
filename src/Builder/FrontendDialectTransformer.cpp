@@ -539,7 +539,7 @@ private:
           inputDimParams.emplace_back(inputDimParamsFromOption[inputIndex]);
         else if (!inputDimParamsFromOptionForAllArgs.empty())
           inputDimParams.emplace_back(inputDimParamsFromOptionForAllArgs);
-        else
+        else if (!dimParams.empty())
           inputDimParams.emplace_back(dimParams);
 
         argTypes.emplace_back(argTy);
@@ -1310,12 +1310,10 @@ private:
     OpsetImportsMap function_opset_map =
         GetOpsetImportsFromProto(functionProto);
 
-    // Update the ShapeInferenceOptions with the new interface.
-    const onnx::ShapeInferenceOptions &options = onnx::ShapeInferenceOptions();
-
     // Populates graph.value_info().
     onnx::shape_inference::InferShapes(&graph, function_opset_map,
-        onnx::OpSchemaRegistry::Instance(), options, in_model_functions_);
+        onnx::OpSchemaRegistry::Instance(),
+        /*options=*/{}, in_model_functions_);
 
     // Save caller context, while generating function body.
     ModelLocalFunctionsMap callerModelFunctions;
@@ -1507,10 +1505,10 @@ private:
       SmallVector<NamedAttribute, 2> argAttrs;
       for (size_t k = 0; k < funcAttrsToMove.size(); ++k) {
         if (i < funcAttrsToMove[k].size()) {
-          auto v = mlir::cast<StringAttr>(funcAttrsToMove[k].getValue()[i]);
-          if (v && !v.getValue().empty()) {
+          auto name = mlir::cast<StringAttr>(funcAttrsToMove[k].getValue()[i]);
+          if (name) {
             NamedAttribute namedAttr =
-                builder_.getNamedAttr(argAttrNames[k], v);
+                builder_.getNamedAttr(argAttrNames[k], name);
             argAttrs.emplace_back(namedAttr);
           }
         }

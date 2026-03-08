@@ -24,8 +24,7 @@ namespace zhigh {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ZHighQuantizedMatMulOpShapeHelper::computeShape() {
-  auto mmOp = mlir::dyn_cast<ZHighQuantizedMatMulOp>(op);
-  ZHighQuantizedMatMulOp::Adaptor operandAdaptor(operands, mmOp);
+  ZHighQuantizedMatMulOp::Adaptor operandAdaptor(operands);
   // Output dims of result.
   DimsExpr outputDims;
 

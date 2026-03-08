@@ -1,17 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Match the minimum required version of LLVM and MLIR
-cmake_minimum_required(VERSION 3.26.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(onnx-mlir)
 
-# Configurate cmake
-
-# General options
 option(ONNX_MLIR_BUILD_TESTS "Build ONNX-MLIR test executables. If OFF, just generate build targets." ON)
 option(ONNX_MLIR_CCACHE_BUILD "Set to ON for a ccache enabled build." OFF)
+option(ONNX_MLIR_ENABLE_STABLEHLO "Enable StableHLO support." ON)
 option(ONNX_MLIR_ENABLE_WERROR "Enable warnings as errors." OFF)
 option(ONNX_MLIR_SUPPRESS_THIRD_PARTY_WARNINGS "Suppress warning in third_party code." ON)
+if (APPLE)
+  option(ONNX_MLIR_ENABLE_JAVA "Set to ON for building the Java runtime, tools, and tests" OFF)
+else()
+  option(ONNX_MLIR_ENABLE_JAVA "Set to ON for building the Java runtime, tools, and tests" ON)
+endif()
+option(ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT "Set to ON for building Python driver of running the compiled model without llvm-project." OFF)
+option(ONNX_MLIR_USE_SYSTEM_LLVM "Compile and link with the system installed LLVM." OFF)
+option(ONNX_MLIR_USE_SYSTEM_MLIR "Compile and link with the system installed MLIR." OFF)
+option(ONNX_MLIR_USE_SYSTEM_ONNX "Compile and link with the system installed ONNX." OFF)
+option(ONNX_MLIR_USE_SYSTEM_OPENMP "Link with the system installed OpenMP Runtime." OFF)
+option(ONNX_MLIR_USE_SYSTEM_PYBIND11 "Use the system installed Pybind11")
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -30,11 +39,33 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)" FORCE)
 endif()
 
+if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+  add_compile_options(-O3)
+  add_definitions(-DNDEBUG)
+elseif(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  add_compile_options(-O0)
+  add_compile_options(-g3)
+  add_definitions(-D_DEBUG)
+endif()
+
 # CMP0116: Ninja generators transform `DEPFILE`s from `add_custom_command()`
 # New in CMake 3.20. https://cmake.org/cmake/help/latest/policy/CMP0116.html
 # Use the same setting as llvm-project
 if (POLICY CMP0116)
   cmake_policy(SET CMP0116 OLD)
+endif()
+
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules" ${CMAKE_MODULE_PATH})
+
+if (ONNX_MLIR_USE_SYSTEM_LLVM)
+  set(CMAKE_MODULE_PATH ${LLVM_CMAKE_MODULE_PATH} ${CMAKE_MODULE_PATH})
+  include(AddLLVM)
+  include(LLVMConfig)
+  endif()
+if (ONNX_MLIR_USE_SYSTEM_MLIR)
+  set(CMAKE_MODULE_PATH ${MLIR_CMAKE_MODULE_PATH} ${CMAKE_MODULE_PATH})
+  include(AddMLIR)
+  include(MLIRConfig)
 endif()
 
 # Enable ccache
@@ -64,6 +95,65 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>/bin)
 set(CMAKE_INCLUDE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>/include)
 
+if (ONNX_MLIR_USE_SYSTEM_LLVM)
+  if (NOT DEFINED LLVM_DIR OR ${LLVM_DIR} STREQUAL "")
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_LLVM was selected but LLVM_DIR is not set")
+  endif()
+endif()
+
+if (ONNX_MLIR_USE_SYSTEM_MLIR)
+  if (NOT DEFINED MLIR_DIR OR ${MLIR_DIR} STREQUAL "")
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_MLIR was selected but MLIR_DIR is not set")
+  endif()
+endif()
+
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  find_package(Protobuf)
+  if (NOT Protobuf_FOUND)
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX is set but Protobuf was not found.")
+  endif()
+  find_package(ONNX)
+  if (NOT ONNX_FOUND)
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX is set but ONNX was not found.")
+  endif()
+
+  if (NOT DEFINED ONNX_INCLUDE_DIR)
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX was selected but ONNX_INCLUDE_DIR is not set")
+  elseif("${ONNX_INCLUDE_DIR}" STREQUAL "")
+    message(FATAL_ERROR "ONNX_INCLUDE_DIR is invalid")
+  else()
+    add_compile_options(-I${ONNX_INCLUDE_DIR})
+  endif()
+
+  if (NOT DEFINED ONNX_LIBRARY_DIR OR ${ONNX_LIBRARY_DIR} STREQUAL "")
+    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX was selected but ONNX_LIBRARY_DIR is not set")
+  else()
+    add_link_options(-L${ONNX_LIBRARY_DIR})
+    add_link_options(-Wl,-rpath,${ONNX_LIBRARY_DIR})
+  endif()
+
+  set(CMAKE_MODULE_PATH ${ONNX_LIBRARY_DIR}/cmake/ONNX ${CMAKE_MODULE_PATH})
+  include(ONNXConfig)
+
+  if (NOT DEFINED ONNX_VERSION)
+    message(FATAL_ERROR "ONNX was found on this system but ONNX_VERSION is not defined.")
+  endif()
+
+  add_definitions(-DONNX_NAMESPACE=onnx)
+  add_definitions(-DONNX_ML=1)
+endif()
+
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+  add_definitions(-D_DARWIN_C_SOURCE)
+endif()
+
+if (LINUX)
+  add_definitions(-D_GNU_SOURCE)
+  add_definitions(-D_XOPEN_SOURCE=700)
+  add_compile_options(-fdata-sections)
+  add_compile_options(-ffunction-sections)
+endif()
+
 set(ONNX_MLIR_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(ONNX_MLIR_BIN_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -74,27 +164,22 @@ set(ONNX_MLIR_INCLUDE_PATH ${CMAKE_INCLUDE_OUTPUT_DIRECTORY})
 set(ONNX_MLIR_VENDOR ${PACKAGE_VENDOR} CACHE STRING
   "Vendor-specific text for showing with version information.")
 
-# This file contained general cmake set up and special mlir-related functions 
-# ToFix: split it later
-# Currently, it is control by variables.
+if(NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
+  include(CTest)
+  include(ExternalProject)
+endif()
+
+find_package(Python3 COMPONENTS Interpreter Development)
+if (NOT Python3_FOUND)
+  message(FATAL_ERROR "Could not find a valid installation of Python3.")
+endif()
+
+find_package(pybind11 CONFIG)
+if (NOT pybind11_FOUND)
+  message(FATAL_ERROR "Could not find a valid installation of Pybind11.")
+endif()
+
 include(MLIR.cmake)
-
-macro(choose_build_target)
-# Check whether the build is for a tool (sub-project for now)
-  if (DEFINED ONNX_MLIR_TARGET_TO_BUILD)
-    include(${ONNX_MLIR_TARGET_TO_BUILD}.cmake)
-    return()
-  endif()
-# Otherwise, continue with default onnx-mlir project
-endmacro()
-
-choose_build_target()
-
-option(ONNX_MLIR_ENABLE_STABLEHLO "Enable StableHLO support." ON)
-option(ONNX_MLIR_ENABLE_JAVA "Set to ON for building the Java runtime, tools, and tests" ON)
-
-include(CTest)
-include(ExternalProject)
 
 # MLIR.cmake calls find_package(MLIR) which sets LLVM_MINIMUM_PYTHON_VERSION
 if (WIN32)
@@ -105,8 +190,6 @@ if (WIN32)
 endif()
 
 find_package(Python3 ${LLVM_MINIMUM_PYTHON_VERSION} REQUIRED COMPONENTS Interpreter Development)
-
-# absl is needed by llvm and onnx 
 find_package(absl REQUIRED)
 
 if(ONNX_MLIR_ENABLE_JAVA)
@@ -182,12 +265,19 @@ set(CMAKE_MESSAGE_LOG_LEVEL NOTICE)
 
 # Add third party subdirectories and define options appropriate to run their cmakes.
 if (ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
-	#add_subdirectory(third_party/onnx)
-  add_subdirectory(third_party/pybind11)
-else()
-  set(pybind11_FIND_QUIETLY ON)
   add_subdirectory(third_party/onnx)
   add_subdirectory(third_party/pybind11)
+else()
+  if (NOT ONNX_MLIR_USE_SYSTEM_ONNX)
+    add_subdirectory(third_party/onnx)
+  endif()
+
+  if (ONNX_MLIR_USE_SYSTEM_PYBIND11)
+    find_package(pybind11)
+  else()
+    set(pybind11_FIND_QUIETLY ON)
+    add_subdirectory(third_party/pybind11)
+  endif()
 
   add_subdirectory(third_party/rapidcheck)
 
@@ -239,15 +329,6 @@ if (ONNX_MLIR_ENABLE_STABLEHLO)
   add_compile_definitions(ONNX_MLIR_ENABLE_STABLEHLO)
 endif()
 
-# The target onnx is defined here after third_part/onnx is included.
-if(NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
-  target_link_libraries(onnx PUBLIC
-    absl::log_internal_check_op
-    absl::log_internal_message
-    absl::status
-    )
-endif()
-
 if (ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
   add_subdirectory(src)
 else()
@@ -257,4 +338,3 @@ else()
   add_subdirectory(docs)
   add_subdirectory(test)
 endif()
-

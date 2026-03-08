@@ -26,8 +26,7 @@ namespace onnx_mlir {
 
 template <>
 LogicalResult ONNXConstantOpShapeHelper::computeShape() {
-  auto constOp = mlir::dyn_cast<ONNXConstantOp>(op);
-  ONNXConstantOpAdaptor operandAdaptor(operands, constOp);
+  ONNXConstantOpAdaptor operandAdaptor(operands, op->getAttrDictionary());
 
   ElementsAttr valAttr;
   if (operandAdaptor.getSparseValue().has_value())

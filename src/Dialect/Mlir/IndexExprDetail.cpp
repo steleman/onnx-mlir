@@ -473,8 +473,10 @@ Value IndexExprImpl::getValue() {
       // Treat float types as f32 as this is what we currently have in the ONNX
       // specs involving float and index calculations.
       float fval = floatLit;
-      value = arith::ConstantFloatOp::create(getRewriter(), getLoc(),
-          getRewriter().getF32Type(), llvm::APFloat(fval));
+      value =
+        arith::ConstantFloatOp::create(getRewriter(), getLoc(),
+                                       getRewriter().getF32Type(),
+                                       getRewriter().getFloatAttr(getRewriter().getF32Type(), llvm::APFloat(fval)));
     } else {
       value = arith::ConstantIndexOp::create(getRewriter(), getLoc(), intLit);
     }

@@ -26,7 +26,7 @@ namespace onnx_mlir {
 
 template <>
 LogicalResult ONNXOneHotEncoderOpShapeHelper::computeShape() {
-  ONNXOneHotEncoderOp oneHotOp = mlir::dyn_cast<ONNXOneHotEncoderOp>(op);
+  ONNXOneHotEncoderOp oneHotOp = llvm::cast<ONNXOneHotEncoderOp>(op);
   ONNXOneHotEncoderOpAdaptor operandAdaptor(operands);
   Value X = operandAdaptor.getX();
   ShapedType inputType = mlir::dyn_cast<RankedTensorType>(X.getType());

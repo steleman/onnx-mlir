@@ -4,7 +4,7 @@
 
 //===========-- ModelLib.cpp - Helper function for building models -==========//
 //
-// Copyright 2022-2026 The IBM Research Authors.
+// Copyright 2022-2023 The IBM Research Authors.
 //
 // =============================================================================
 //
@@ -15,7 +15,6 @@
 #include "mlir/IR/BuiltinOps.h"
 
 #include "include/OnnxMlirRuntime.h"
-#include "src/Compiler/CommandUtils.hpp"
 #include "src/Compiler/CompilerUtils.hpp"
 #include "src/Dialect/ONNX/ONNXOps.hpp"
 #include "src/Runtime/OMTensorHelper.hpp"
@@ -48,12 +47,7 @@ bool ModelLibBuilder::compileAndLoad() {
   std::string libFilename =
       getTargetFilename(sharedLibBaseName, onnx_mlir::EmitLib);
   std::string modelTag = getCompilerOption(OptionKind::ModelTag);
-  try {
-    exec = new ExecutionSession(libFilename, modelTag);
-  } catch (const onnx_mlir::ExecutionSessionException &error) {
-    std::cerr << error.what() << std::endl;
-    exec = nullptr;
-  }
+  exec = new ExecutionSession(libFilename, modelTag);
   return exec != nullptr;
 }
 
@@ -75,12 +69,9 @@ bool ModelLibBuilder::checkInstructionFromEnv(
 bool ModelLibBuilder::checkInstruction(const std::string instructionName) {
   if (instructionName.empty())
     return true;
-  DynamicLibraryHandleType sharedLibraryHandle = exec->getSharedLibraryHandle();
-#if defined(_WIN32)
+  llvm::sys::DynamicLibrary sharedLibraryHandle =
+      exec->getSharedLibraryHandle();
   void *addr = sharedLibraryHandle.getAddressOfSymbol(instructionName.c_str());
-#else
-  void *addr = dlsym(sharedLibraryHandle, instructionName.c_str());
-#endif
   if (!addr) {
     printf("%s not found.\n", instructionName.c_str());
     return false;
@@ -96,7 +87,7 @@ bool ModelLibBuilder::run() {
   }
   try {
     outputs = exec->run(inputs);
-  } catch (const onnx_mlir::ExecutionSessionException &error) {
+  } catch (const std::runtime_error &error) {
     std::cerr << "error while running: " << error.what() << std::endl;
     return false;
   }

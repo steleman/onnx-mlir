@@ -136,8 +136,8 @@ struct ONNXGemmOpLoweringToStablehlo : public ConversionPattern {
       ConversionPatternRewriter &rewriter) const final {
 
     // Get shape.
-    ONNXGemmOp gemmOp = mlir::dyn_cast<ONNXGemmOp>(op);
-    ONNXGemmOpAdaptor operandAdaptor(operands, gemmOp);
+    ONNXGemmOp gemmOp = llvm::cast<ONNXGemmOp>(op);
+    ONNXGemmOpAdaptor operandAdaptor(operands, op->getAttrDictionary());
     Location loc = op->getLoc();
     // Shape helper version for analysis: does not generate code for lowering.
     ONNXGemmOpShapeHelper shapeHelper(op, {});

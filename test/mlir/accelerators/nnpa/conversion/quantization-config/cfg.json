@@ -1,25 +1,13 @@
 {
-  "nnpa_ops_config": [
+  "quantization": [
     {
-      "pattern": {
-        "match": {
-          "node_type": "onnx.MatMul",
-          "onnx_node_name": "MatMul_1"
-        },
-        "rewrite": {
-          "quantize": true
-        }
-      }
+      "quantize": true,
+      "node_type":"onnx.MatMul",
+      "onnx_node_name":"MatMul_1"
     },
     {
-      "pattern": {
-        "match": {
-          "node_type": "onnx.MatMul"
-        },
-        "rewrite": {
-          "quantize": false
-        }
-      }
+      "quantize": false,
+      "node_type":"onnx.MatMul"
     }
   ]
 }

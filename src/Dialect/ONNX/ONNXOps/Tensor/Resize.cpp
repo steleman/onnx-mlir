@@ -45,8 +45,7 @@ bool isAbsent(Value input) {
 } // namespace
 
 LogicalResult ONNXResizeOpShapeHelper::computeShape() {
-  auto resizeOp = mlir::dyn_cast<ONNXResizeOp>(op);
-  ONNXResizeOpAdaptor operandAdaptor(operands, resizeOp);
+  ONNXResizeOpAdaptor operandAdaptor(operands, cast<ONNXResizeOp>(op));
   if (operandAdaptor.getAxes().has_value())
     return op->emitOpError("axes are unsupported");
   const auto x = operandAdaptor.getX();

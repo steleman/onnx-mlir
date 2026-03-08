@@ -27,8 +27,8 @@ namespace onnx_mlir {
 template <>
 LogicalResult ONNXDepthToSpaceOpShapeHelper::computeShape() {
   // Get info about input data operand and blocksize.
-  ONNXDepthToSpaceOp depthOp = mlir::dyn_cast<ONNXDepthToSpaceOp>(op);
-  ONNXDepthToSpaceOpAdaptor operandAdaptor(operands, depthOp);
+  ONNXDepthToSpaceOp depthOp = llvm::cast<ONNXDepthToSpaceOp>(op);
+  ONNXDepthToSpaceOpAdaptor operandAdaptor(operands);
   Value input = operandAdaptor.getInput();
   if (!hasShapeAndRank(input)) {
     return failure();

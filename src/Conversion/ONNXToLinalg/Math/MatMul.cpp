@@ -27,21 +27,10 @@ using namespace mlir;
 namespace onnx_mlir {
 
 struct ONNXMatMulOpLoweringToLinalg : public OpRewritePattern<ONNXMatMulOp> {
-  ONNXMatMulOpLoweringToLinalg(
-      MLIRContext *ctx, const std::string &linalgOps, bool useLinalgPath)
-      : OpRewritePattern<ONNXMatMulOp>(ctx), linalgOps(linalgOps),
-        useLinalgPath(useLinalgPath) {}
+  using OpRewritePattern<ONNXMatMulOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
       ONNXMatMulOp matMulOp, PatternRewriter &rewriter) const final {
-    // Check if this operation should be converted to Linalg based on
-    // --linalg-ops option
-    Operation *op = matMulOp.getOperation();
-    if (!shouldConvertToLinalg(op, linalgOps, useLinalgPath)) {
-      return rewriter.notifyMatchFailure(
-          matMulOp, "operation not selected for Linalg conversion");
-    }
-
     ONNXMatMulOpAdaptor adaptor(matMulOp);
 
     Location loc = matMulOp.getLoc();
@@ -95,16 +84,11 @@ struct ONNXMatMulOpLoweringToLinalg : public OpRewritePattern<ONNXMatMulOp> {
     rewriter.replaceOp(matMulOp, matmulResult);
     return success();
   }
-
-private:
-  std::string linalgOps;
-  bool useLinalgPath;
 };
 
 void populateLoweringONNXMatMulOpToLinalgPattern(RewritePatternSet &patterns,
-    TypeConverter &typeConverter, MLIRContext *ctx,
-    const std::string &linalgOps, bool useLinalgPath) {
-  patterns.add<ONNXMatMulOpLoweringToLinalg>(ctx, linalgOps, useLinalgPath);
+    TypeConverter &typeConverter, MLIRContext *ctx) {
+  patterns.add<ONNXMatMulOpLoweringToLinalg>(ctx);
 }
 
 } // namespace onnx_mlir

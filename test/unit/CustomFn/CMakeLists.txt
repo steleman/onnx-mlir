@@ -7,4 +7,6 @@ add_unittest(TestCustomFn
   OMBuilder
   OMCompilerPasses
   OMONNXOps
-  )
+  ONNX::onnx_proto
+  ONNX::onnx)
+

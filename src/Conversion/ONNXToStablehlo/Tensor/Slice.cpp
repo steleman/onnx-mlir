@@ -32,7 +32,7 @@ struct ONNXSliceOpLoweringToStablehlo : public ConversionPattern {
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     ONNXSliceOpAdaptor operandAdaptor(operands);
-    ONNXSliceOp sliceOp = mlir::dyn_cast<ONNXSliceOp>(op);
+    ONNXSliceOp sliceOp = llvm::cast<ONNXSliceOp>(op);
     MLIRContext *context = op->getContext();
     Location loc = op->getLoc();
 

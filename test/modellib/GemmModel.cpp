@@ -114,6 +114,7 @@ bool GemmLibBuilder::verifyOutputs() {
   OMTensor *ref = omTensorCreateWithShape<float>({I, J});
   if (!a || !b || !c || !res || !ref)
     return false;
+
   // Compute reference.
   // Matmul A * B.
   for (int64_t i = 0; i < I; ++i) {
@@ -142,7 +143,7 @@ bool GemmLibBuilder::verifyOutputs() {
       else if (cRank == 2)
         cVal = omTensorGetElem<float>(c, {i, j});
       else
-        assert(false);
+        return false;
       omTensorGetElem<float>(ref, {i, j}) =
           alphaVal * omTensorGetElem<float>(ref, {i, j}) + betaVal * cVal;
     }

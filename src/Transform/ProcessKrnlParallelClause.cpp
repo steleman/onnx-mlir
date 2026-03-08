@@ -12,11 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Transforms/Passes.h"
-
+#include "src/Transform/ProcessKrnlParallelClause.hpp"
 #include "src/Dialect/Krnl/KrnlOps.hpp"
 #include "src/Pass/Passes.hpp"
-#include "src/Transform/ProcessKrnlParallelClause.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -36,12 +34,6 @@
 using namespace mlir;
 
 namespace {
-
-/* All the implementation of this pass is put in the anonymous name space
- * to hide from ourside.
- */
-#define GEN_PASS_DEF_PROCESSKRNLPARALLELCLAUSEPASS
-#include "src/Transform/Passes.h.inc"
 
 struct ProcessKrnlParallelClauseWithoutScopePattern
     : public OpRewritePattern<KrnlParallelClauseOp> {
@@ -98,11 +90,29 @@ struct ProcessKrnlParallelClauseWithoutScopePattern
 };
 
 struct ProcessKrnlParallelClausePass
-    : public impl::ProcessKrnlParallelClausePassBase<
-          ProcessKrnlParallelClausePass> {
+    : public PassWrapper<ProcessKrnlParallelClausePass,
+          OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ProcessKrnlParallelClausePass)
 
+  ProcessKrnlParallelClausePass() {}
+  ProcessKrnlParallelClausePass(const ProcessKrnlParallelClausePass &pass)
+      : mlir::PassWrapper<ProcessKrnlParallelClausePass,
+            OperationPass<func::FuncOp>>() {}
+
+  StringRef getArgument() const override {
+    return "process-krnl-parallel-clause";
+  }
+
+  StringRef getDescription() const override {
+    return "Migrate info from Krnl Parallel Clause into OpenMP Parallel "
+           "operation.";
+  }
+
   void runOnOperation() final;
+
+  typedef PassWrapper<ProcessKrnlParallelClausePass,
+      OperationPass<func::FuncOp>>
+      BaseType;
 };
 
 void ProcessKrnlParallelClausePass::runOnOperation() {
@@ -134,8 +144,6 @@ void onnx_mlir::getKrnlParallelClauseIntoOpenMPPatterns(
 /*!
  * Create a Krnl Parallel Clause pass.
  */
-namespace onnx_mlir {
-std::unique_ptr<Pass> createProcessKrnlParallelClausePass() {
+std::unique_ptr<mlir::Pass> onnx_mlir::createProcessKrnlParallelClausePass() {
   return std::make_unique<ProcessKrnlParallelClausePass>();
 }
-} // namespace onnx_mlir

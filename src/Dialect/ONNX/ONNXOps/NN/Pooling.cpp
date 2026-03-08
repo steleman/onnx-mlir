@@ -29,8 +29,7 @@ namespace onnx_mlir {
 
 template <typename OP_TYPE>
 LogicalResult ONNXGenericGlobalPoolOpShapeHelper<OP_TYPE>::computeShape() {
-  auto poolOp = mlir::dyn_cast<OP_TYPE>(op);
-  typename OP_TYPE::Adaptor operandAdaptor(operands, poolOp);
+  typename OP_TYPE::Adaptor operandAdaptor(operands);
   DimsExpr xDims, outputDims;
   createIE->getShapeAsDims(operandAdaptor.getX(), xDims);
   if (xDims.size() < 3)
@@ -48,8 +47,7 @@ LogicalResult ONNXGenericGlobalPoolOpShapeHelper<OP_TYPE>::computeShape() {
 
 template <>
 LogicalResult ONNXMaxRoiPoolOpShapeHelper::computeShape() {
-  auto poolOp = mlir::dyn_cast<ONNXMaxRoiPoolOp>(op);
-  ONNXMaxRoiPoolOpAdaptor operandAdaptor(operands, poolOp);
+  ONNXMaxRoiPoolOpAdaptor operandAdaptor(operands, op->getAttrDictionary());
   IndexExpr channel = createIE->getShapeAsDim(operandAdaptor.getX(), 1);
 
   const auto rois = operandAdaptor.getRois();
@@ -89,7 +87,7 @@ namespace onnx_mlir {
 template <>
 LogicalResult ONNXAveragePoolOpShapeHelper::computeShape() {
   ONNXAveragePoolOpAdaptor operandAdaptor = ONNXAveragePoolOpAdaptor(operands);
-  ONNXAveragePoolOp poolOp = mlir::dyn_cast<ONNXAveragePoolOp>(op);
+  ONNXAveragePoolOp poolOp = llvm::cast<ONNXAveragePoolOp>(op);
   return customComputeShape(operandAdaptor.getX(), /*W*/ nullptr,
       poolOp.getKernelShape(), poolOp.getAutoPad(), poolOp.getPads(),
       poolOp.getStrides(), poolOp.getDilations(), /*hasFilter*/ false,
@@ -193,7 +191,7 @@ template <>
 LogicalResult ONNXMaxPoolSingleOutOpShapeHelper::computeShape() {
   ONNXMaxPoolSingleOutOpAdaptor operandAdaptor =
       ONNXMaxPoolSingleOutOpAdaptor(operands);
-  ONNXMaxPoolSingleOutOp poolOp = mlir::dyn_cast<ONNXMaxPoolSingleOutOp>(op);
+  ONNXMaxPoolSingleOutOp poolOp = llvm::cast<ONNXMaxPoolSingleOutOp>(op);
   return customComputeShape(operandAdaptor.getX(), /*W*/ nullptr,
       poolOp.getKernelShape(), poolOp.getAutoPad(), poolOp.getPads(),
       poolOp.getStrides(), poolOp.getDilations(), /*hasFilter*/ false,

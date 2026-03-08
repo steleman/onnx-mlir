@@ -24,8 +24,7 @@ namespace zhigh {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ZHighStickForGRUOpShapeHelper::computeShape() {
-  auto stickOp = mlir::dyn_cast<ZHighStickForGRUOp>(op);
-  ZHighStickForGRUOp::Adaptor operandAdaptor(operands, stickOp);
+  ZHighStickForGRUOp::Adaptor operandAdaptor(operands);
   Value zGate = operandAdaptor.getZGate();
 
   // Output dims of result.

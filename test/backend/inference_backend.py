@@ -365,7 +365,7 @@ def get_test_models():
             DYNAMIC_SHAPE: {-1: {-1}},
             CONSTANT_INPUT: {-1},
         },
-        # ==OP== BitShift
+        # ==OP== Bitshift
         # ==MIN== 11
         "test_bitshift_right_uint8_cpu": {
             STATIC_SHAPE: {},

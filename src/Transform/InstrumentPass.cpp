@@ -23,7 +23,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -39,14 +38,12 @@ using namespace mlir;
 
 namespace onnx_mlir {
 
-#define GEN_PASS_DEF_INSTRUMENTPASS
-#include "src/Transform/Passes.h.inc"
-
 /*!
  * This pass insert KrnlInstrumentOp before and after each ops
  */
 
-class InstrumentPass : public impl::InstrumentPassBase<InstrumentPass> {
+class InstrumentPass
+    : public mlir::PassWrapper<InstrumentPass, OperationPass<func::FuncOp>> {
 
 public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InstrumentPass)
@@ -75,7 +72,7 @@ public:
 
   InstrumentPass() : allowedOps(/*emptyIsNone*/ true){};
   InstrumentPass(const InstrumentPass &pass)
-      : impl::InstrumentPassBase<InstrumentPass>(),
+      : mlir::PassWrapper<InstrumentPass, OperationPass<func::FuncOp>>(),
         allowedOps(/*emptyIsNone*/ true) {}
   InstrumentPass(const std::string &ops, unsigned actions)
       : allowedOps(/*emptyIsNone*/ true) {
@@ -144,17 +141,16 @@ public:
       // hardware with an integrated accelerator for AI (z16 +) that supports
       // the required zDNN library version.
       // ```
-      std::string opName = op->getName().getStringRef().str();
-      Location loc = op->getLoc();
-      OpBuilder opBuilder(op);
-
       if (op->getNumResults() == 1 && isa<NoneType>(op->getResult(0).getType()))
         return WalkResult::advance();
       // Skip other instrument ops.
       if (isa<KrnlInstrumentOp>(op) || isa<ONNXPrintSignatureOp>(op))
         return WalkResult::advance();
 
+      std::string opName = op->getName().getStringRef().str();
       if (allowedOps.isEnabled(opName)) {
+        Location loc = op->getLoc();
+        OpBuilder opBuilder(op);
         if (instrumentBefore) {
           uint64_t tag = beforeTag();
           if (!hasInitializedRuntime) {
@@ -184,16 +180,11 @@ public:
 /*!
  * Create an instrumentation pass.
  */
-namespace onnx_mlir {
-// Below is defined by GEN_PASS_DEF in onnx_mlir namespace
-/*
-std::unique_ptr<mlir::Pass> createInstrument() {
+std::unique_ptr<mlir::Pass> onnx_mlir::createInstrumentPass() {
   return std::make_unique<InstrumentPass>();
 }
-*/
 
-std::unique_ptr<mlir::Pass> createInstrumentPass(
+std::unique_ptr<mlir::Pass> onnx_mlir::createInstrumentPass(
     const std::string &ops, unsigned actions) {
   return std::make_unique<InstrumentPass>(ops, actions);
 }
-} // namespace onnx_mlir

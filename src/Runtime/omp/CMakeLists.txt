@@ -1,42 +1,53 @@
 # SPDX-License-Identifier: Apache-2.0
 
-if(OMP_SUPPORTED)
-  set(OMP_TOPDIR ${CMAKE_CURRENT_BINARY_DIR})
-  set_directory_properties(PROPERTIES EP_BASE ${OMP_TOPDIR})
-  set(OPENMP_SOURCE_DIR ${LLVM_BUILD_MAIN_SRC_DIR}/../openmp)
+include(GNUInstallDirs)
 
-  include(ExternalProject)
-  ExternalProject_Add(OMomp
-    DOWNLOAD_DIR "."
-    BINARY_DIR ${OMP_TOPDIR}/openmp-build
-    INSTALL_DIR ${OMP_TOPDIR}/install
-    STAMP_DIR ${OMP_TOPDIR}/stamp
-    TMP_DIR ${OMP_TOPDIR}/tmp
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+  set(CMAKE_INSTALL_LOCAL_ONLY ON)
+endif()
 
-    DOWNLOAD_COMMAND ""
-    # Build with LIBOMP_ENABLE_SHARED=OFF so that libomp.a can be embedded into model.so
-    # Since OpenMP is not exposed in the LLVM build directory, it must be configured
-    # and built separately in its own build directory
-    CONFIGURE_COMMAND sh -c "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} \
-                             cmake -G Ninja -S ${OPENMP_SOURCE_DIR} \
-                                -B ${OMP_TOPDIR}/openmp-build \
-                                -DCMAKE_BUILD_TYPE=Release \
-                                -DLIBOMP_ENABLE_SHARED=OFF"
+if (OMP_SUPPORTED)
+  if (NOT ONNX_MLIR_USE_SYSTEM_OPENMP)
+    set(OMP_TOPDIR ${CMAKE_CURRENT_BINARY_DIR})
+    set_directory_properties(PROPERTIES EP_BASE ${OMP_TOPDIR})
+    set(OPENMP_SOURCE_DIR ${LLVM_BUILD_MAIN_SRC_DIR}/../openmp)
 
-    BUILD_COMMAND sh -c "cmake --build ${OMP_TOPDIR}/openmp-build --target omp"
-    INSTALL_COMMAND ""
-  )
+    include(ExternalProject)
+    ExternalProject_Add(OMomp
+      DOWNLOAD_DIR "."
+      BINARY_DIR ${OMP_TOPDIR}/openmp-build
+      INSTALL_DIR ${OMP_TOPDIR}/install
+      STAMP_DIR ${OMP_TOPDIR}/stamp
+      TMP_DIR ${OMP_TOPDIR}/tmp
 
-  add_custom_target(ompruntime
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${OMP_TOPDIR}/openmp-build/runtime/src/libomp.a ${ONNX_MLIR_LIBRARY_PATH}/libompruntime.a
-    DEPENDS OMomp
-    BYPRODUCTS ${OMP_TOPDIR}/openmp-build/runtime/src/libomp.a
-  )
+      DOWNLOAD_COMMAND ""
+      # Build with LIBOMP_ENABLE_SHARED=OFF so that libomp.a can be embedded into model.so
+      # Since OpenMP is not exposed in the LLVM build directory, it must be configured
+      # and built separately in its own build directory
+      CONFIGURE_COMMAND sh -c "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} \
+                              cmake -G Ninja -S ${OPENMP_SOURCE_DIR} \
+                                  -B ${OMP_TOPDIR}/openmp-build \
+                                  -DCMAKE_BUILD_TYPE=Release \
+                                  -DLIBOMP_ENABLE_SHARED=OFF"
 
-  install(FILES ${ONNX_MLIR_LIBRARY_PATH}/libompruntime.a DESTINATION lib)
+      BUILD_COMMAND sh -c "cmake --build ${OMP_TOPDIR}/openmp-build --target omp"
+      INSTALL_COMMAND ""
+    )
 
-  message(STATUS "OpenMP support           : ON")
+    add_custom_target(ompruntime
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${OMP_TOPDIR}/openmp-build/runtime/src/libomp.a ${ONNX_MLIR_LIBRARY_PATH}/libompruntime.a
+      DEPENDS OMomp
+      BYPRODUCTS ${OMP_TOPDIR}/openmp-build/runtime/src/libomp.a
+    )
+
+    install(FILES ${ONNX_MLIR_LIBRARY_PATH}/libompruntime.a DESTINATION lib)
+    message(STATUS "OpenMP support         : ON")
+    message(STATUS "Using local OpenMP")
+  else()
+    message(STATUS "OpenMP support         : ON")
+    message(STATUS "Using system OpenMP")
+  endif()
 else()
   message(STATUS "OpenMP support           : OFF")
 endif()

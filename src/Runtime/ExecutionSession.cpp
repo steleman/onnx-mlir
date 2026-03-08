@@ -4,7 +4,7 @@
 
 //===------- ExecutionSession.cpp - ExecutionSession Implementation -------===//
 //
-// Copyright 2019-2026 The IBM Research Authors.
+// Copyright 2019-2024 The IBM Research Authors.
 //
 // =============================================================================
 //
@@ -13,22 +13,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
-#include <cctype>
 #include <errno.h>
-#include <filesystem>
 #include <string.h>
-#include <strings.h>
 
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <vector>
 
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Path.h"
+#else
+#include <dlfcn.h>
 #endif
 
 #include "ExecutionSession.hpp"
@@ -40,67 +38,58 @@ namespace onnx_mlir {
 
 ExecutionSession::ExecutionSession(
     std::string sharedLibPath, std::string tag, bool defaultEntryPoint) {
-  loadModel(sharedLibPath, tag, defaultEntryPoint);
+  Init(sharedLibPath, tag, defaultEntryPoint);
 }
 
-void ExecutionSession::loadModel(
+void ExecutionSession::Init(
     std::string sharedLibPath, std::string tag, bool defaultEntryPoint) {
   if (isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once at most.");
+    throw std::runtime_error(reportInitError());
 
   // If there is no tag, use the model filename without extension as a tag.
   if (tag == "") {
-#if defined(_WIN32)
+    // ToFix: equivalent implementation of llvm utilities.
+    // The would not be an urgent issue, because tag is usually "NONE"
+#ifndef ENABLE_PYRUNTIME_LIGHT
     std::string fname = llvm::sys::path::filename(sharedLibPath).str();
     llvm::SmallString<256> fnameWithoutExt(fname);
     llvm::sys::path::replace_extension(fnameWithoutExt, "");
-    tag = fnameWithoutExt.lower();
-#else
-    std::string fnameWithoutExt = std::filesystem::path(sharedLibPath)
-                                      .filename()
-                                      .replace_extension("")
-                                      .string();
-    std::transform(fnameWithoutExt.begin(), fnameWithoutExt.end(),
-        fnameWithoutExt.begin(),
-        [](unsigned char c) { return std::tolower(c); });
-    tag = fnameWithoutExt;
+    tag = fnameWithoutExt.str().lower();
 #endif
   }
 
   // tag = "NONE" to use functions without tag.
   std::string lowDashTag;
+  // ToFix: equivalent implementation of llv::StringRef
+#ifndef ENABLE_PYRUNTIME_LIGHT
+  // Assume tag is always NONE
+  if (!llvm::StringRef(tag).equals_insensitive("NONE"))
+    lowDashTag = "_" + tag;
+#endif
+
 #if defined(_WIN32)
   // Use functions without tags on Windows since we cannot define at compile
   // time the tagged functions in the header files in
   // `include/onnx-mlir/Runtime` to make the tagged functions visible.
   lowDashTag = "";
-#else
-  // Save the llvm supported implementation.
-  // if (!llvm::StringRef(tag).equals_insensitive("NONE"))
-  // lowDashTag = "_" + tag;
-  if (strcasecmp(tag.c_str(), "NONE") != 0)
-    lowDashTag = "_" + tag;
 #endif
 
   // Init symbols used by execution session.
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
   _sharedLibraryHandle =
       llvm::sys::DynamicLibrary::getLibrary(sharedLibPath.c_str());
   if (!_sharedLibraryHandle.isValid())
-    throw ExecutionSessionException(
-        "Cannot open library: '" + sharedLibPath + "'.");
+    throw std::runtime_error(reportLibraryOpeningError(sharedLibPath));
 #else
   // Copy code from llvm/lib/Support/DynamicLibrary.cpp, especially the flags
   // ToFix: copy the lock related code too.
   _sharedLibraryHandle = dlopen(sharedLibPath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
   if (!_sharedLibraryHandle)
-    throw ExecutionSessionException(
-        "Cannot open library: '" + sharedLibPath + "'.");
+    throw std::runtime_error(reportLibraryOpeningError(sharedLibPath));
 #endif
 
   std::string queryEntryPointsNameWithTag = _queryEntryPointsName + lowDashTag;
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
   _queryEntryPointsFunc = reinterpret_cast<queryEntryPointsFuncType>(
       _sharedLibraryHandle.getAddressOfSymbol(
           queryEntryPointsNameWithTag.c_str()));
@@ -110,11 +99,11 @@ void ExecutionSession::loadModel(
 #endif
 
   if (!_queryEntryPointsFunc)
-    throw ExecutionSessionException(
-        "Cannot load symbol: '" + queryEntryPointsNameWithTag + "'.");
+    throw std::runtime_error(
+        reportSymbolLoadingError(queryEntryPointsNameWithTag));
 
   std::string inputSignatureNameWithTag = _inputSignatureName + lowDashTag;
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
   _inputSignatureFunc = reinterpret_cast<signatureFuncType>(
       _sharedLibraryHandle.getAddressOfSymbol(
           inputSignatureNameWithTag.c_str()));
@@ -123,11 +112,11 @@ void ExecutionSession::loadModel(
       dlsym(_sharedLibraryHandle, inputSignatureNameWithTag.c_str()));
 #endif
   if (!_inputSignatureFunc)
-    throw ExecutionSessionException(
-        "Cannot load symbol: '" + inputSignatureNameWithTag + "'.");
+    throw std::runtime_error(
+        reportSymbolLoadingError(inputSignatureNameWithTag));
 
   std::string outputSignatureNameWithTag = _outputSignatureName + lowDashTag;
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
   _outputSignatureFunc = reinterpret_cast<signatureFuncType>(
       _sharedLibraryHandle.getAddressOfSymbol(
           outputSignatureNameWithTag.c_str()));
@@ -136,20 +125,8 @@ void ExecutionSession::loadModel(
       dlsym(_sharedLibraryHandle, outputSignatureNameWithTag.c_str()));
 #endif
   if (!_outputSignatureFunc)
-    throw ExecutionSessionException(
-        "Cannot load symbol: '" + outputSignatureNameWithTag + "'.");
-
-#if defined(_WIN32)
-  _printInstrumentationFunc = reinterpret_cast<printInstrumentationFuncType>(
-      _sharedLibraryHandle.getAddressOfSymbol(
-          _printInstrumentationName.c_str()));
-#else
-  _printInstrumentationFunc = reinterpret_cast<printInstrumentationFuncType>(
-      dlsym(_sharedLibraryHandle, _printInstrumentationName.c_str()));
-#endif
-  if (!_printInstrumentationFunc)
-    throw ExecutionSessionException(
-        "Cannot load symbol: '" + _printInstrumentationName + "'.");
+    throw std::runtime_error(
+        reportSymbolLoadingError(outputSignatureNameWithTag));
 
   // Set OM_CONSTANT_PATH for loading constants from file if required.
   std::size_t found = sharedLibPath.find_last_of("/\\");
@@ -173,7 +150,7 @@ void ExecutionSession::loadModel(
 }
 
 ExecutionSession::~ExecutionSession() {
-#if defined(_WIN32)
+#ifndef ENABLE_PYRUNTIME_LIGHT
   if (_sharedLibraryHandle.isValid())
     llvm::sys::DynamicLibrary::closeLibrary(_sharedLibraryHandle);
 #else
@@ -188,17 +165,15 @@ ExecutionSession::~ExecutionSession() {
 const std::string *ExecutionSession::queryEntryPoints(
     int64_t *numOfEntryPoints) const {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
+    throw std::runtime_error(reportInitError());
   return reinterpret_cast<const std::string *>(
       _queryEntryPointsFunc(numOfEntryPoints));
 }
 
 void ExecutionSession::setEntryPoint(const std::string &entryPointName) {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
-#if defined(_WIN32)
+    throw std::runtime_error(reportInitError());
+#ifndef ENABLE_PYRUNTIME_LIGHT
   _entryPointFunc = reinterpret_cast<entryPointFuncType>(
       _sharedLibraryHandle.getAddressOfSymbol(entryPointName.c_str()));
 #else
@@ -206,42 +181,27 @@ void ExecutionSession::setEntryPoint(const std::string &entryPointName) {
       dlsym(_sharedLibraryHandle, entryPointName.c_str()));
 #endif
   if (!_entryPointFunc)
-    throw ExecutionSessionException(
-        "Cannot load symbol: '" + entryPointName + "'.");
+    throw std::runtime_error(reportSymbolLoadingError(entryPointName));
   _entryPointName = entryPointName;
   errno = 0; // No errors.
 }
 
 const std::string ExecutionSession::inputSignature() const {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
+    throw std::runtime_error(reportInitError());
   if (!_entryPointFunc)
-    throw ExecutionSessionException(
-        "Must set an entry point (e.g. run_main_graph) before calling "
-        "signature function.");
+    throw std::runtime_error(reportUndefinedEntryPointIn("signature"));
   errno = 0; // No errors.
   return _inputSignatureFunc(_entryPointName.c_str());
 }
 
 const std::string ExecutionSession::outputSignature() const {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
+    throw std::runtime_error(reportInitError());
   if (!_entryPointFunc)
-    throw ExecutionSessionException(
-        "Must set an entry point (e.g. run_main_graph) before calling "
-        "signature function.");
+    throw std::runtime_error(reportUndefinedEntryPointIn("signature"));
   errno = 0; // No errors.
   return _outputSignatureFunc(_entryPointName.c_str());
-}
-
-void ExecutionSession::printInstrumentation() {
-  if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
-  errno = 0; // No errors.
-  return _printInstrumentationFunc();
 }
 
 // =============================================================================
@@ -250,12 +210,9 @@ void ExecutionSession::printInstrumentation() {
 std::vector<OMTensorUniquePtr> ExecutionSession::run(
     std::vector<OMTensorUniquePtr> ins) {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
+    throw std::runtime_error(reportInitError());
   if (!_entryPointFunc)
-    throw ExecutionSessionException(
-        "Must set an entry point (e.g. run_main_graph) before calling run "
-        "function.");
+    throw std::runtime_error(reportUndefinedEntryPointIn("run"));
 
   std::vector<OMTensor *> omts;
   for (const auto &inOmt : ins)
@@ -272,7 +229,7 @@ std::vector<OMTensorUniquePtr> ExecutionSession::run(
   // OMTensors.
   omTensorListDestroyShallow(wrappedInput);
   if (!wrappedOutput)
-    throw ExecutionSessionException(reportErrnoError());
+    throw std::runtime_error(reportErrnoError());
 
   std::vector<OMTensorUniquePtr> outs;
   for (int64_t i = 0; i < omTensorListGetSize(wrappedOutput); i++) {
@@ -293,17 +250,14 @@ std::vector<OMTensorUniquePtr> ExecutionSession::run(
 // lists.
 OMTensorList *ExecutionSession::run(OMTensorList *input) {
   if (!isInitialized)
-    throw ExecutionSessionException(
-        "Execution session must be initialized once.");
+    throw std::runtime_error(reportInitError());
   if (!_entryPointFunc)
-    throw ExecutionSessionException(
-        "Must set an entry point (e.g. run_main_graph) before calling run "
-        "function.");
+    throw std::runtime_error(reportUndefinedEntryPointIn("run"));
 
   // Run inference.
   OMTensorList *output = _entryPointFunc(input);
   if (!output)
-    throw ExecutionSessionException(reportErrnoError());
+    throw std::runtime_error(reportErrnoError());
   errno = 0; // No errors.
   return output;
 }
@@ -311,11 +265,52 @@ OMTensorList *ExecutionSession::run(OMTensorList *input) {
 // =============================================================================
 // Error reporting
 
+std::string ExecutionSession::reportInitError() const {
+  errno = EFAULT; // Bad Address.
+  std::stringstream errStr;
+  errStr << "Execution session must be initialized once." << std::endl;
+  return errStr.str();
+}
+
+std::string ExecutionSession::reportLibraryOpeningError(
+    const std::string &libraryName) const {
+  errno = EFAULT; // Bad Address.
+  std::stringstream errStr;
+  errStr << "Cannot open library: '" << libraryName << "'." << std::endl;
+  return errStr.str();
+}
+
+std::string ExecutionSession::reportSymbolLoadingError(
+    const std::string &symbolName) const {
+  errno = EFAULT; // Bad Address.
+  std::stringstream errStr;
+  errStr << "Cannot load symbol: '" << symbolName << "'." << std::endl;
+  return errStr.str();
+}
+
+std::string ExecutionSession::reportUndefinedEntryPointIn(
+    const std::string &functionName) const {
+  errno = EINVAL; // Invalid argument.
+  std::stringstream errStr;
+  errStr << "Must set an entry point (e.g. run_main_graph) before calling "
+         << functionName << " function." << std::endl;
+  return errStr.str();
+}
+
 std::string ExecutionSession::reportErrnoError() const {
   std::string errMessageStr = std::string(strerror(errno));
   std::stringstream errStr;
   errStr << "Runtime error during inference returning with ERRNO code '"
          << errMessageStr << "'." << std::endl;
+  return errStr.str();
+}
+
+std::string ExecutionSession::reportCompilerError(
+    const std::string &errorMessage) const {
+  errno = EFAULT; // Bad Address.
+  std::stringstream errStr;
+  errStr << "Compiler failed with error message '" << errorMessage << "'."
+         << std::endl;
   return errStr.str();
 }
 

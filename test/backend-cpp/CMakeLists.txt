@@ -40,4 +40,6 @@ add_backend_cpp_unittest(TestCategoryMapper
 
   LINK_LIBS PRIVATE
   ModelLib
-  )
+  ONNX::onnx_proto
+  ONNX::onnx)
+

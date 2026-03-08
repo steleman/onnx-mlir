@@ -83,18 +83,19 @@ add_onnx_mlir_library(OMNNPAQuantOpSelection
 
   LINK_LIBS PUBLIC
   OMONNXOps
+  OMONNXToZHigh
   OMNNPAJSONConfig
 
   ACCEL_INCLUDE_DIRS PRIVATE
   ${NNPA_INCLUDE_PATH}
   )
 
-add_onnx_mlir_library(OMNNPAGenerateConfigFile
-  GenerateConfigFile.cpp
+add_onnx_mlir_library(OMNNPAJSONConfig
+  JsonConfigFile.cpp
 
   LINK_LIBS PUBLIC
-  OMONNXOps
-  OMNNPAJSONConfig
+  MLIRIR
+  LLVMSupport
 
   ACCEL_INCLUDE_DIRS PRIVATE
   ${NNPA_INCLUDE_PATH}

@@ -1,15 +1,9 @@
 {
-  "nnpa_ops_config": [
+  "device_placement": [
     {
-      "pattern": {
-        "match": {
-          "node_type": "onnx.*",
-          "onnx_node_name": ".*"
-        },
-        "rewrite": {
-          "device": "cpu"
-        }
-      }
+      "device": "cpu",
+      "node_type": "onnx.*",
+      "onnx_node_name": ".*"
     }
   ]
 }

@@ -24,8 +24,7 @@ namespace zhigh {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ZHighMeanReduce2DOpShapeHelper::computeShape() {
-  auto meanReduceOp = mlir::dyn_cast<ZHighMeanReduce2DOp>(op);
-  ZHighMeanReduce2DOp::Adaptor operandAdaptor(operands, meanReduceOp);
+  ZHighMeanReduce2DOp::Adaptor operandAdaptor(operands);
   Value input = operandAdaptor.getInput();
 
   // Output dims of result.

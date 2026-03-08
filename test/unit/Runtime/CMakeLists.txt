@@ -8,4 +8,6 @@ add_unittest(OMTensorTest
 
   LINK_LIBS PRIVATE
   cruntime
-  )
+  ONNX::onnx_proto
+  ONNX::onnx)
+

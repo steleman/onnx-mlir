@@ -6,4 +6,6 @@ add_unittest(TestSmallFP
   LINK_LIBS PRIVATE
   OMMlirUtilities
   benchmark
-  )
+  ONNX::onnx_proto
+  ONNX::onnx)
+

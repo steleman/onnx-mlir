@@ -1,0 +1,1524 @@
+--- CMakeLists.txt	2025-12-11 13:41:47.218215827 -0500
++++ CMakeLists.txt	2026-03-07 18:31:12.283398975 -0500
+@@ -10,8 +10,17 @@
+ option(ONNX_MLIR_ENABLE_STABLEHLO "Enable StableHLO support." ON)
+ option(ONNX_MLIR_ENABLE_WERROR "Enable warnings as errors." OFF)
+ option(ONNX_MLIR_SUPPRESS_THIRD_PARTY_WARNINGS "Suppress warning in third_party code." ON)
++if (APPLE)
++  option(ONNX_MLIR_ENABLE_JAVA "Set to ON for building the Java runtime, tools, and tests" OFF)
++else()
+ option(ONNX_MLIR_ENABLE_JAVA "Set to ON for building the Java runtime, tools, and tests" ON)
++endif()
+ option(ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT "Set to ON for building Python driver of running the compiled model without llvm-project." OFF)
++option(ONNX_MLIR_USE_SYSTEM_LLVM "Compile and link with the system installed LLVM." OFF)
++option(ONNX_MLIR_USE_SYSTEM_MLIR "Compile and link with the system installed MLIR." OFF)
++option(ONNX_MLIR_USE_SYSTEM_ONNX "Compile and link with the system installed ONNX." OFF)
++option(ONNX_MLIR_USE_SYSTEM_OPENMP "Link with the system installed OpenMP Runtime." OFF)
++option(ONNX_MLIR_USE_SYSTEM_PYBIND11 "Use the system installed Pybind11")
+ 
+ set(CMAKE_CXX_STANDARD 17)
+ 
+@@ -30,6 +39,15 @@
+   set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)" FORCE)
+ endif()
+ 
++if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
++  add_compile_options(-O3)
++  add_definitions(-DNDEBUG)
++elseif(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
++  add_compile_options(-O0)
++  add_compile_options(-g3)
++  add_definitions(-D_DEBUG)
++endif()
++
+ # CMP0116: Ninja generators transform `DEPFILE`s from `add_custom_command()`
+ # New in CMake 3.20. https://cmake.org/cmake/help/latest/policy/CMP0116.html
+ # Use the same setting as llvm-project
+@@ -37,6 +55,19 @@
+   cmake_policy(SET CMP0116 OLD)
+ endif()
+ 
++set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules" ${CMAKE_MODULE_PATH})
++
++if (ONNX_MLIR_USE_SYSTEM_LLVM)
++  set(CMAKE_MODULE_PATH ${LLVM_CMAKE_MODULE_PATH} ${CMAKE_MODULE_PATH})
++  include(AddLLVM)
++  include(LLVMConfig)
++  endif()
++if (ONNX_MLIR_USE_SYSTEM_MLIR)
++  set(CMAKE_MODULE_PATH ${MLIR_CMAKE_MODULE_PATH} ${CMAKE_MODULE_PATH})
++  include(AddMLIR)
++  include(MLIRConfig)
++endif()
++
+ # Enable ccache
+ # This setup is sufficient for Ninja and Makefiles, but not Xcode
+ if (ONNX_MLIR_CCACHE_BUILD)
+@@ -64,6 +95,65 @@
+ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>/bin)
+ set(CMAKE_INCLUDE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>/include)
+ 
++if (ONNX_MLIR_USE_SYSTEM_LLVM)
++  if (NOT DEFINED LLVM_DIR OR ${LLVM_DIR} STREQUAL "")
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_LLVM was selected but LLVM_DIR is not set")
++  endif()
++endif()
++
++if (ONNX_MLIR_USE_SYSTEM_MLIR)
++  if (NOT DEFINED MLIR_DIR OR ${MLIR_DIR} STREQUAL "")
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_MLIR was selected but MLIR_DIR is not set")
++  endif()
++endif()
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  find_package(Protobuf)
++  if (NOT Protobuf_FOUND)
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX is set but Protobuf was not found.")
++  endif()
++  find_package(ONNX)
++  if (NOT ONNX_FOUND)
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX is set but ONNX was not found.")
++  endif()
++
++  if (NOT DEFINED ONNX_INCLUDE_DIR)
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX was selected but ONNX_INCLUDE_DIR is not set")
++  elseif("${ONNX_INCLUDE_DIR}" STREQUAL "")
++    message(FATAL_ERROR "ONNX_INCLUDE_DIR is invalid")
++  else()
++    add_compile_options(-I${ONNX_INCLUDE_DIR})
++  endif()
++
++  if (NOT DEFINED ONNX_LIBRARY_DIR OR ${ONNX_LIBRARY_DIR} STREQUAL "")
++    message(FATAL_ERROR "ONNX_MLIR_USE_SYSTEM_ONNX was selected but ONNX_LIBRARY_DIR is not set")
++  else()
++    add_link_options(-L${ONNX_LIBRARY_DIR})
++    add_link_options(-Wl,-rpath,${ONNX_LIBRARY_DIR})
++  endif()
++
++  set(CMAKE_MODULE_PATH ${ONNX_LIBRARY_DIR}/cmake/ONNX ${CMAKE_MODULE_PATH})
++  include(ONNXConfig)
++
++  if (NOT DEFINED ONNX_VERSION)
++    message(FATAL_ERROR "ONNX was found on this system but ONNX_VERSION is not defined.")
++  endif()
++
++  add_definitions(-DONNX_NAMESPACE=onnx)
++  add_definitions(-DONNX_ML=1)
++endif()
++
++if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
++  add_definitions(-D_DARWIN_C_SOURCE)
++endif()
++
++if (LINUX)
++  add_definitions(-D_GNU_SOURCE)
++  add_definitions(-D_XOPEN_SOURCE=700)
++  add_compile_options(-fdata-sections)
++  add_compile_options(-ffunction-sections)
++endif()
++
+ set(ONNX_MLIR_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+ set(ONNX_MLIR_BIN_ROOT ${CMAKE_CURRENT_BINARY_DIR})
+ 
+@@ -78,6 +168,17 @@
+   include(CTest)
+   include(ExternalProject)
+ endif()
++
++find_package(Python3 COMPONENTS Interpreter Development)
++if (NOT Python3_FOUND)
++  message(FATAL_ERROR "Could not find a valid installation of Python3.")
++endif()
++
++find_package(pybind11 CONFIG)
++if (NOT pybind11_FOUND)
++  message(FATAL_ERROR "Could not find a valid installation of Pybind11.")
++endif()
++
+ include(MLIR.cmake)
+ 
+ # MLIR.cmake calls find_package(MLIR) which sets LLVM_MINIMUM_PYTHON_VERSION
+@@ -167,9 +268,16 @@
+   add_subdirectory(third_party/onnx)
+   add_subdirectory(third_party/pybind11)
+ else()
+-  set(pybind11_FIND_QUIETLY ON)
++  if (NOT ONNX_MLIR_USE_SYSTEM_ONNX)
+   add_subdirectory(third_party/onnx)
++  endif()
++
++  if (ONNX_MLIR_USE_SYSTEM_PYBIND11)
++    find_package(pybind11)
++  else()
++    set(pybind11_FIND_QUIETLY ON)
+   add_subdirectory(third_party/pybind11)
++  endif()
+ 
+   add_subdirectory(third_party/rapidcheck)
+ 
+--- cmake/Modules/FindONNX.cmake	2025-11-04 12:38:46.898373622 -0500
++++ cmake/Modules/FindONNX.cmake	2025-12-01 18:01:52.406699759 -0500
+@@ -0,0 +1,70 @@
++# Script to find the ONNX header files and libraries.
++# Defines the following:
++#   ONNX_FOUND       - if the package is found
++#   ONNX_INCLUDE_DIR - the directory for 'nvtx3'
++#   ONNX_LIBRARIES   - the libraries needed to linked for using ONNX
++#
++
++include(FindPackageHandleStandardArgs)
++unset(ONNX_FOUND)
++
++if (APPLE)
++find_path(ONNX_INCLUDE_DIR
++          NAMES
++          onnx_pb.h
++          HINTS
++          /usr/local/include/onnx)
++elseif (LINUX)
++find_path(ONNX_INCLUDE_DIR
++          NAMES
++          onnx_pb.h
++          HINTS
++          /usr/include/onnx
++          /usr/local/include/onnx)
++endif()
++
++if (NOT DEFINED ONNX_INCLUDE_DIR)
++  message(FATAL_ERROR "Could not find ONNX's header files directory.")
++endif()
++
++# set ONNX_FOUND
++find_package_handle_standard_args(ONNX DEFAULT_MSG ONNX_INCLUDE_DIR)
++
++if (APPLE)
++find_path(ONNX_LIBRARY_DIR
++          NAMES
++          libonnx.dylib
++          libonnx_proto.dylib
++          HINTS
++          /usr/local/lib)
++elseif (LINUX)
++find_path(ONNX_LIBRARY_DIR
++          NAMES
++          libonnx.so
++          libonnx_proto.so
++          HINTS
++          /usr/lib64
++          /usr/local/lib64)
++endif()
++
++if (NOT DEFINED ONNX_LIBRARY_DIR)
++  message(FATAL_ERROR "Could not find ONNX libraries directory.")
++endif()
++
++# set ONNX_FOUND
++find_package_handle_standard_args(ONNX DEFAULT_MSG ONNX_LIBRARY_DIR)
++
++# set external variables for usage in CMakeLists.txt
++if (ONNX_FOUND)
++  message(STATUS "Found ONNX.")
++  message(STATUS "ONNX_INCLUDE_DIR: ${ONNX_INCLUDE_DIR}")
++  message(STATUS "ONNX_LIBRARY_DIR: ${ONNX_LIBRARY_DIR}")
++  set(ONNX_FOUND True)
++  set(ONNX_INCLUDE_DIR ${ONNX_INCLUDE_DIR})
++  set(ONNX_LIBRARY_DIR ${ONNX_LIBRARY_DIR})
++  mark_as_advanced(ONNX_INCLUDE_DIR)
++  mark_as_advanced(ONNX_LIBRARY_DIR)
++else()
++  message(FATAL_ERROR "ONNX not found.")
++endif()
++
+--- docs/doc_example/CMakeLists.txt	2025-12-11 13:41:47.228158999 -0500
++++ docs/doc_example/CMakeLists.txt	2025-12-15 19:15:56.329364202 -0500
+@@ -88,7 +88,8 @@
+   LINK_LIBS PRIVATE
+   OMCompiler
+   OMExecutionSession
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
+ 
+ set_output_directory(OMRuntimeCppTest BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR} LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+ 
+--- src/CMakeLists.txt	2025-12-11 13:41:47.248668685 -0500
++++ src/CMakeLists.txt	2026-03-07 18:29:24.802678838 -0500
+@@ -1,28 +1,114 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
++include(GNUInstallDirs)
++include(AddLLVM)
++include(LLVMConfig)
++include(AddMLIR)
++include(MLIRConfig)
++
+ if (ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
+   add_subdirectory(Runtime)
+   # Accelerators introduces a target AcceleratorsInc. Define a dummy one here
+   add_custom_target(AcceleratorsInc
+-      COMMAND echo "This is the dummy definition for AcceleratorsInc"
+-  ) 
++      COMMAND echo "This is the dummy definition for AcceleratorsInc")
+   add_compile_definitions(ENABLE_PYRUNTIME_LIGHT)
+   return()
+ endif()
+ 
++if (APPLE)
++  find_package(OpenMP COMPONENTS C CXX)
++elseif (LINUX)
++  find_package(OpenMP)
++endif()
++
++message(STATUS "OpenMP_FOUND: ${OpenMP_FOUND}")
++message(STATUS "OpenMP_C_FOUND: ${OpenMP_C_FOUND}")
++message(STATUS "OpenMP_CXX_FOUND: ${OpenMP_CXX_FOUND}")
++
++if (OpenMP_FOUND)
++  message(STATUS "OpenMP_C_INCLUDE_DIRS: ${OpenMP_C_INCLUDE_DIRS}")
++  message(STATUS "OpenMP_C_LIBRARY: ${OpenMP_C_LIBRARY}")
++
++  if (APPLE)
++    set(OPENMP_INCLUDE_DIR ${OpenMP_C_INCLUDE_DIRS})
++    find_path(OPENMP_LIBRARY_DIR
++              NAMES libomp.dylib
++              HINTS ${OpenMP_C_LIBRARY}
++              PATHS ${OpenMP_C_LIBRARY})
++    message(STATUS "OPENMP_INCLUDE_DIR: ${OPENMP_INCLUDE_DIR}")
++    message(STATUS "OPENMP_LIBRARY_DIR: ${OPENMP_LIBRARY_DIR}")
++    set(OMP_SUPPORTED ON)
++  elseif (LINUX)
++    set(OMP_SUPPORTED ON)
++  endif()
++else()
+ # Find OpenMP headers built by LLVM
+ find_path(OPENMP_INCLUDE_DIR
+   NAMES omp.h
+   HINTS
++            ${OpenMP_DIR}
++            ${OpenMP_DIR}/include
++            /usr/local/include
++            ${LLVM_INCLUDE_DIRS}
+     ${LLVM_BUILD_BINARY_DIR}/lib/clang/*/include
+-  NO_DEFAULT_PATH
+-)
++            PATHS
++            ${OpenMP_DIR}
++            ${OpenMP_DIR}/include
++            /usr/local/include
++            ${LLVM_INCLUDE_DIRS}
++            ${LLVM_BUILD_BINARY_DIR}/lib/clang/*/include)
++
+ if(OPENMP_INCLUDE_DIR)
+   set(OMP_SUPPORTED ON)
+ else()
+   set(OMP_SUPPORTED OFF)
+ endif()
+ 
++  if (APPLE)
++    find_path(OPENMP_LIBRARY_DIR
++              NAMES libomp.dylib
++              HINTS /usr/local/lib
++              ${LLVM_LIBRARY_DIRS}
++              ${LLVM_BUILD_BINARY_DIR}/lib
++              PATHS
++              /usr/local/lib
++              ${LLVM_LIBRARY_DIRS}
++              ${LLVM_BUILD_BINARY_DIR}/lib)
++  elseif (LINUX)
++    find_path(OPENMP_LIBRARY_DIR
++              NAMES libgomp.so
++              HINTS
++              ${OpenMP_DIR}
++              ${OpenMP_DIR}/lib64
++              PATHS
++              ${OpenMP_DIR}
++              ${OpenMP_DIR}/lib64
++              ${LLVM_BUILD_BINARY_DIR}/lib64)
++  endif()
++
++  if (OPENMP_LIBRARY_DIR)
++    set(OPENMP_SUPPORTED ON)
++  else()
++    set(OMP_SUPPORTED OFF)
++  endif()
++endif()
++
++message(STATUS "OpenMP Support: ${OMP_SUPPORTED}")
++
++if (OMP_SUPPORTED)
++  add_compile_options(-fopenmp)
++endif()
++
++if (APPLE)
++  message(STATUS "OPENMP_INCLUDE_DIR: ${OPENMP_INCLUDE_DIR}")
++  message(STATUS "OPENMP_LIBRARY_DIR: ${OPENMP_LIBRARY_DIR}")
++endif()
++
++add_compile_options(-I${CMAKE_SOURCE_DIR}/include)
++add_compile_options(-I${CMAKE_SOURCE_DIR})
++add_compile_options(-I${CMAKE_BINARY_DIR}/include)
++add_compile_options(-I${CMAKE_BINARY_DIR})
++
+ add_subdirectory(Accelerators)
+ add_subdirectory(Interface)
+ add_subdirectory(Dialect)
+@@ -42,5 +128,6 @@
+   OMCompilerOptions
+   OMCompilerUtils
+   OMOptionUtils
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
+   
+--- src/Compiler/CMakeLists.txt	2025-12-11 13:41:47.248786895 -0500
++++ src/Compiler/CMakeLists.txt	2025-12-14 23:16:33.616457914 -0500
+@@ -215,11 +215,20 @@
+ find_path(OPENMP_INCLUDE_DIR
+   NAMES omp.h
+   HINTS
++  /usr/local/include
++  ${LLVM_BUILD_BINARY_DIR}/lib/clang/*/include
++  PATHS
++  /usr/local/include
+     ${LLVM_BUILD_BINARY_DIR}/lib/clang/*/include
+-  NO_DEFAULT_PATH
+ )
++
+ if(OPENMP_INCLUDE_DIR)
+-  add_dependencies(OMCompilerUtils ompruntime)
++  add_compile_options(-I${OPENMP_INCLUDE_DIR})
++endif()
++
++if (OPENMP_LIBRARY_DIR)
++  add_compile_options(-L${OPENMP_LIBRARY_DIR})
++  add_compile_options(-Wl,-rpath,${OPENMP_LIBRARY_DIR})
+ endif()
+ 
+ add_onnx_mlir_library(OMCompiler
+@@ -244,26 +253,39 @@
+   target_compile_definitions(OMCompiler PUBLIC ONNX_MLIR_BUILT_AS_STATIC)
+ endif()
+ 
++if (ONNX_MLIR_USE_SYSTEM_OPENMP)
++  if (BUILD_SHARED_LIBS)
++    target_link_libraries(OMCompiler PUBLIC omp)
++  endif()
++endif()
++
+ pybind11_add_module(PyCompile PyOMCompileSession.cpp)
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  add_dependencies(PyCompile ONNX::onnx_proto ONNX::onnx)
++else()
+ add_dependencies(PyCompile onnx)
++endif()
++
+ target_compile_options(PyCompile
+   PRIVATE
+   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
+-  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>
+-  )
++  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>)
++
++if (NOT ONNX_MLIR_USE_SYSTEM_ONNX)
+ target_compile_definitions(PyCompile
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>
+-  )
++  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
++
+ target_include_directories(PyCompile
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>
+-  )
++  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
++endif()
++
+ target_link_libraries(PyCompile
+   PRIVATE
+-  OMCompiler
+-  )
++  OMCompiler)
+ 
+ install(TARGETS PyCompile
+-  DESTINATION lib
+-  )
++  DESTINATION lib)
++
+--- src/Compiler/CompilerUtils.cpp	2025-12-11 13:41:47.249376986 -0500
++++ src/Compiler/CompilerUtils.cpp	2025-12-15 18:42:53.388225751 -0500
+@@ -158,7 +158,7 @@
+   llvm::SmallString<8> cur_wdir;
+   llvm::SmallString<8> new_wdir(wdir);
+   llvm::sys::fs::current_path(cur_wdir);
+-  llvm::sys::path::make_absolute(cur_wdir, new_wdir);
++  llvm::sys::fs::make_absolute(cur_wdir, new_wdir);
+   std::error_code ec = llvm::sys::fs::set_current_path(new_wdir);
+   if (ec.value()) {
+     llvm::errs() << llvm::StringRef(new_wdir).str() << ": " << ec.message()
+--- src/Conversion/ONNXToTOSA/Tensor/Resize.cpp	2025-12-11 13:41:47.270400262 -0500
++++ src/Conversion/ONNXToTOSA/Tensor/Resize.cpp	2025-12-15 18:35:42.711219927 -0500
+@@ -291,9 +291,7 @@
+     bool isBilinear = mode == "linear";
+     bool isNearest = mode == "nearest";
+     bool isNearestModeFloor = nearestMode == "floor";
+-    mlir::tosa::ResizeMode resizeMode =
+-        isBilinear ? mlir::tosa::ResizeMode::BILINEAR
+-                   : mlir::tosa::ResizeMode::NEAREST_NEIGHBOR;
++    StringRef resizeMode = isBilinear ? "BILINEAR" : "NEAREST_NEIGHBOR";
+ 
+     if (halfPixelSymmetric)
+       return rewriter.notifyMatchFailure(op,
+@@ -319,8 +317,7 @@
+     Value border = mlir::tosa::getTosaConstShape(
+         rewriter, loc, {yDimension.border, xDimension.border});
+ 
+-    auto resizeModeAttr =
+-        mlir::tosa::ResizeModeAttr::get(rewriter.getContext(), resizeMode);
++    auto resizeModeAttr = rewriter.getStringAttr(resizeMode);
+     Type newOutputType =
+         RankedTensorType::get(llvm::SmallVector<int64_t, 4>(
+                                   inputType.getRank(), ShapedType::kDynamic),
+--- src/Dialect/Mlir/IndexExprDetail.cpp	2025-12-11 13:41:47.273801473 -0500
++++ src/Dialect/Mlir/IndexExprDetail.cpp	2025-12-15 10:04:44.058596585 -0500
+@@ -473,8 +473,10 @@
+       // Treat float types as f32 as this is what we currently have in the ONNX
+       // specs involving float and index calculations.
+       float fval = floatLit;
+-      value = arith::ConstantFloatOp::create(getRewriter(), getLoc(),
+-          getRewriter().getF32Type(), llvm::APFloat(fval));
++      value =
++        arith::ConstantFloatOp::create(getRewriter(), getLoc(),
++                                       getRewriter().getF32Type(),
++                                       getRewriter().getFloatAttr(getRewriter().getF32Type(), llvm::APFloat(fval)));
+     } else {
+       value = arith::ConstantIndexOp::create(getRewriter(), getLoc(), intLit);
+     }
+--- src/Dialect/ONNX/ElementsAttr/ElementsAttrBuilder.cpp	2025-12-11 13:41:47.275570371 -0500
++++ src/Dialect/ONNX/ElementsAttr/ElementsAttrBuilder.cpp	2026-03-07 15:57:26.818448542 -0500
+@@ -144,14 +144,14 @@
+   return dispatchByBType(
+       btypeOfMlirType(lhs.getElementType()), [lhs, n](auto btype) {
+         using cpptype = CppType<btype>;
+-        auto nEquals = [n](cpptype x) {
++        auto nEquals = [=](cpptype x) {
+           constexpr BType TAG = toBType<cpptype>;
+           return n.narrow<TAG>() == x;
+         };
+         if (auto disposable = mlir::dyn_cast<DisposableElementsAttr>(lhs)) {
+           if (disposable.isTransformedOrCast()) {
+             ArrayBuffer<WideNum> nums = disposable.getBufferAsWideNums();
+-            return llvm::all_of(nums.get(), [n](WideNum m) {
++            return llvm::all_of(nums.get(), [=](WideNum m) {
+               constexpr BType TAG = toBType<cpptype>;
+               return n.narrow<TAG>() == m.narrow<TAG>();
+             });
+--- src/Runtime/CMakeLists.txt	2025-12-11 13:41:47.290833280 -0500
++++ src/Runtime/CMakeLists.txt	2025-12-14 18:05:28.519868367 -0500
+@@ -1,12 +1,26 @@
+ 
+ # SPDX-License-Identifier: Apache-2.0
+ 
++include(GNUInstallDirs)
++
+ if (NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
+ add_subdirectory(jni)
++endif()
++
++if (NOT ONNX_MLIR_USE_SYSTEM_OPENMP)
+ add_subdirectory(omp)
+ endif()
++
+ add_subdirectory(python)
+ 
++if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
++  set(CMAKE_INSTALL_LOCAL_ONLY ON)
++endif()
++
+ # TODO: should add for each accelerator its subdirectory that implements InitAccel##name
+ # and ShutdownAccel##name.
+ 
+@@ -37,9 +51,9 @@
+   INCLUDE_DIRS PRIVATE
+   ${ONNX_MLIR_SRC_ROOT}/include
+   )
++
+ set_target_properties(cruntime
+-  PROPERTIES
+-  LANGUAGE C
++                      PROPERTIES LANGUAGE C
+   POSITION_INDEPENDENT_CODE TRUE
+   )
+ 
+@@ -66,6 +80,7 @@
+   INCLUDE_DIRS PUBLIC
+   ${ONNX_MLIR_SRC_ROOT}/include
+   )
++
+ set_target_properties(OMTensorUtils
+   PROPERTIES
+   POSITION_INDEPENDENT_CODE TRUE
+@@ -79,8 +94,7 @@
+   EXCLUDE_FROM_OM_LIBS
+ 
+   LINK_LIBS PUBLIC
+-  OMTensorUtils
+-  )
++                        OMTensorUtils)
+ else()
+ add_onnx_mlir_library(OMExecutionSession
+   ExecutionSession.cpp
+@@ -92,10 +106,11 @@
+   LLVMSupport
+   absl::log_internal_check_op
+   absl::log_internal_message
+-  absl::status
+-  )
++                        absl::status)
+ endif()
++
+ set_target_properties(OMExecutionSession
+   PROPERTIES
+   POSITION_INDEPENDENT_CODE TRUE
+   )
++
+--- src/Runtime/omp/CMakeLists.txt	2025-12-11 13:41:47.294969251 -0500
++++ src/Runtime/omp/CMakeLists.txt	2025-12-14 18:01:06.433441790 -0500
+@@ -1,6 +1,13 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
++include(GNUInstallDirs)
++
++if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
++  set(CMAKE_INSTALL_LOCAL_ONLY ON)
++endif()
++
+ if(OMP_SUPPORTED)
++  if (NOT ONNX_MLIR_USE_SYSTEM_OPENMP)
+   set(OMP_TOPDIR ${CMAKE_CURRENT_BINARY_DIR})
+   set_directory_properties(PROPERTIES EP_BASE ${OMP_TOPDIR})
+   set(OPENMP_SOURCE_DIR ${LLVM_BUILD_MAIN_SRC_DIR}/../openmp)
+@@ -35,8 +42,12 @@
+   )
+ 
+   install(FILES ${ONNX_MLIR_LIBRARY_PATH}/libompruntime.a DESTINATION lib)
+-
+   message(STATUS "OpenMP support           : ON")
++    message(STATUS "Using local OpenMP")
++  else()
++    message(STATUS "OpenMP support         : ON")
++    message(STATUS "Using system OpenMP")
++  endif()
+ else()
+   message(STATUS "OpenMP support           : OFF")
+ endif()
+--- src/Runtime/python/CMakeLists.txt	2025-12-11 13:41:47.295048794 -0500
++++ src/Runtime/python/CMakeLists.txt	2025-12-14 23:26:13.118665281 -0500
+@@ -2,13 +2,21 @@
+ 
+ file(GENERATE
+   OUTPUT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/PyRuntime.py
+-  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py
+-  )
++  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py)
+ 
+ file(GENERATE
+   OUTPUT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/PyCompileAndRuntime.py
+-  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyCompileAndRuntime.py
+-  )
++  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyCompileAndRuntime.py)
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  include(ONNXTargets)
++  add_compile_options(-I${ONNX_INCLUDE_DIR})
++  add_definitions(-DONNX_ML=1)
++  add_definitions(-DONNX_NAMESPACE=onnx)
++  add_definitions(-DUSE_ML=1)
++  add_compile_options(-L${ONNX_LIBRARY_DIR})
++  add_compile_options(-Wl,-rpath,${ONNX_LIBRARY_DIR})
++endif()
+ 
+ # TODO: Remove pybind11::python_link_helper after cmake version bumped to 3.16+
+ if(NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
+@@ -21,8 +29,7 @@
+     OMExecutionSession
+     OMMlirUtilities
+     pybind11::embed
+-    pybind11::python_link_helper
+-    )
++    pybind11::python_link_helper)
+ else()
+   add_compile_definitions(ENABLE_PYRUNTIME_LIGHT)
+   add_onnx_mlir_library(OMPyExecutionSessionBase
+@@ -33,27 +40,39 @@
+     LINK_LIBS PUBLIC
+     OMExecutionSession
+     pybind11::embed
+-    pybind11::python_link_helper
+-  )
++    pybind11::python_link_helper)
+ endif()
+ 
+ if(MSVC)
+   target_link_libraries(OMPyExecutionSessionBase
+-    PRIVATE pybind11::windows_extras
+-  )
++    PRIVATE pybind11::windows_extras)
++endif()
++
++if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
++  message(STATUS "python: CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}")
++  message(STATUS "python: CMAKE_MODULE_LINKER_FLAGS: ${CMAKE_MODULE_LINKER_FLAGS}")
+ endif()
++
+ set_target_properties(OMPyExecutionSessionBase
+   PROPERTIES
+-  POSITION_INDEPENDENT_CODE TRUE
+-  )
++  POSITION_INDEPENDENT_CODE TRUE)
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  add_dependencies(OMPyExecutionSessionBase ONNX::onnx_proto ONNX::onnx)
++else()
++  add_dependencies(OMPyExecutionSessionBase onnx)
+ target_compile_definitions(OMPyExecutionSessionBase
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>
+-  )
++                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
++
+ target_include_directories(OMPyExecutionSessionBase
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>
+-  )
++                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
++endif()
+ 
+ # When running on ubi8 image, shared lib backend tests fail with
+ # the following error:
+@@ -83,29 +102,43 @@
+ # which we add back through target_compile_definitions and
+ # target_include_directories.
+ pybind11_add_module(PyRuntimeC PyExecutionSession.cpp)
+-add_dependencies(PyRuntimeC onnx)
+-target_compile_options(PyRuntimeC
+-  PRIVATE
++
++target_compile_options(PyRuntimeC PRIVATE
+   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
+-  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>
+-  )
++  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>)
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  add_dependencies(PyRuntimeC ONNX::onnx_proto ONNX::onnx)
++else()
++  add_dependencies(PyRuntimeC onnx)
+ target_compile_definitions(PyRuntimeC
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>
+-  )
++                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
++
+ target_include_directories(PyRuntimeC
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>
+-  )
++                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
++endif()
++
+ target_link_libraries(PyRuntimeC
+   PRIVATE
+   OMPyExecutionSessionBase
+-  )
++  onnx_proto
++  onnx)
++
+ llvm_update_compile_flags(PyRuntimeC)
+ 
+-install(TARGETS PyRuntimeC
+-  DESTINATION lib
+-  )
++if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
++  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
++         CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
++  message(STATUS "python: CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}")
++  message(STATUS "python: CMAKE_MODULE_LINKER_FLAGS: ${CMAKE_MODULE_LINKER_FLAGS}")
++endif()
++
++
++install(TARGETS PyRuntimeC DESTINATION lib)
+ 
+ # Target to prepare onnxmlir package
+ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/libs)
+@@ -115,8 +148,7 @@
+         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirdocker.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/
+         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir
+         COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/libs
+-        DEPENDS PyRuntimeC
+-     )
++        DEPENDS PyRuntimeC)
+ 
+ # Target to prepare onnxmlirtorch package
+ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch/libs)
+@@ -125,8 +157,7 @@
+         COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch/libs
+         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirdocker.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch
+         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch
+-        DEPENDS PyRuntimeC
+-     )
++        DEPENDS PyRuntimeC)
+ 
+ if(ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
+   # Since the compiler is not built when PYRUNTIME_LIGHT is enabled,
+@@ -135,29 +166,40 @@
+ endif()
+ 
+ pybind11_add_module(PyCompileAndRuntimeC PyOMCompileExecutionSession.cpp)
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  add_dependencies(PyCompileAndRuntimeC ONNX::onnx_proto ONNX::onnx)
++else()
+ add_dependencies(PyCompileAndRuntimeC onnx)
++endif()
++
++if (ONNX_MLIR_USE_SYSTEM_ONNX)
++  add_dependencies(PyCompileAndRuntimeC ONNX::onnx_proto ONNX::onnx)
++else()
+ target_compile_options(PyCompileAndRuntimeC
+   PRIVATE
+   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
+-  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>
+-  )
++                         $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>)
++
+ target_compile_definitions(PyCompileAndRuntimeC
+   PRIVATE
+-  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>
+-  )
++                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
++
+ target_include_directories(PyCompileAndRuntimeC
+   PRIVATE
+   ${ONNX_MLIR_SRC_ROOT}/include
+-  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>
+-  )
++                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
++endif()
++
+ target_link_libraries(PyCompileAndRuntimeC
+   PRIVATE
+   OMCompiler
+   OMPyExecutionSessionBase
+-  )
++  onnx_proto
++  onnx)
++
+ llvm_update_compile_flags(PyCompileAndRuntimeC)
+ 
+ install(TARGETS PyCompileAndRuntimeC
+-  DESTINATION lib
+-  )
++  DESTINATION lib)
+ 
+--- src/Version/CMakeLists.txt	2025-12-11 13:41:47.299981150 -0500
++++ src/Version/CMakeLists.txt	2025-12-14 19:54:39.762460290 -0500
+@@ -86,14 +86,21 @@
+ file(READ "${ONNX_MLIR_SRC_ROOT}/VERSION_NUMBER" ONNX_MLIR_VERSION)
+ string(STRIP "${ONNX_MLIR_VERSION}" ONNX_MLIR_VERSION)
+ list(APPEND DEFINITIONS "ONNX_MLIR_VERSION=\"${ONNX_MLIR_VERSION}\"")
++
++if (NOT ONNX_MLIR_USE_SYSTEM_ONNX)
+ file(READ "${ONNX_MLIR_SRC_ROOT}/third_party/onnx/VERSION_NUMBER" ONNX_VERSION)
+ string(STRIP "${ONNX_VERSION}" ONNX_VERSION)
++endif()
++
++message(STATUS "ONNX_VERSION: ${ONNX_VERSION}")
++
+ if ("${ONNX_VERSION}" STREQUAL "")
+   message(WARNING "third_party/onnx version not detected, you may be on the wrong commit hash")
+ else()
+   message(STATUS "Onnx version             : ${ONNX_VERSION}")
+   list(APPEND DEFINITIONS "ONNX_VERSION=\"${ONNX_VERSION}\"")
+ endif()
++
+ if (ONNX_MLIR_VENDOR)
+   list(APPEND DEFINITIONS "ONNX_MLIR_VENDOR=\"${ONNX_MLIR_VENDOR}\"")
+ endif()
+--- test/backend-cpp/CMakeLists.txt	2025-12-11 13:41:47.301069872 -0500
++++ test/backend-cpp/CMakeLists.txt	2025-12-15 19:18:47.759354210 -0500
+@@ -40,4 +40,6 @@
+ 
+   LINK_LIBS PRIVATE
+   ModelLib
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/compilerlib/CMakeLists.txt	2025-12-11 13:41:47.303879701 -0500
++++ test/compilerlib/CMakeLists.txt	2025-12-15 19:19:30.196562207 -0500
+@@ -10,4 +10,6 @@
+ 
+   LINK_LIBS PRIVATE
+   OMCompiler
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/modellib/CMakeLists.txt	2025-12-11 13:41:47.350651315 -0500
++++ test/modellib/CMakeLists.txt	2025-12-15 19:20:35.406913815 -0500
+@@ -21,4 +21,6 @@
+   OMCompilerUtils
+   OMExecutionSession
+   ${CMAKE_DL_LIBS}
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/modellib/GemmModel.cpp	2025-12-11 13:41:47.350993361 -0500
++++ test/modellib/GemmModel.cpp	2026-03-07 17:37:29.565939548 -0500
+@@ -114,6 +114,7 @@
+   OMTensor *ref = omTensorCreateWithShape<float>({I, J});
+   if (!a || !b || !c || !res || !ref)
+     return false;
++
+   // Compute reference.
+   // Matmul A * B.
+   for (int64_t i = 0; i < I; ++i) {
+@@ -142,7 +143,7 @@
+       else if (cRank == 2)
+         cVal = omTensorGetElem<float>(c, {i, j});
+       else
+-        assert(false);
++        return false;
+       omTensorGetElem<float>(ref, {i, j}) =
+           alphaVal * omTensorGetElem<float>(ref, {i, j}) + betaVal * cVal;
+     }
+--- test/numerical/CMakeLists.txt	2025-12-11 13:41:47.352175210 -0500
++++ test/numerical/CMakeLists.txt	2025-12-15 19:18:11.222532378 -0500
+@@ -41,7 +41,7 @@
+ 
+ # The CompilerUtils ExecutionSession are also included in ModelLib,
+ # but it did not compile when I removed these two. TODO, figure out why.
+-set(TEST_LINK_LIBS rapidcheck ModelLib)
++set(TEST_LINK_LIBS rapidcheck ModelLib ONNX::onnx_proto ONNX::onnx)
+ 
+ add_numerical_test(TestConv
+   TestConv.cpp
+--- test/perf/CMakeLists.txt	2025-12-11 13:41:47.353173306 -0500
++++ test/perf/CMakeLists.txt	2025-12-15 19:21:24.053229668 -0500
+@@ -6,8 +6,8 @@
+ 
+   LINK_LIBS PUBLIC
+   benchmark 
+-  LLVMSupport
+-  )
++  LLVMSupport)
++
+ 
+ add_custom_target(perf)
+ set_target_properties(perf PROPERTIES FOLDER "Perf")
+@@ -44,7 +44,7 @@
+   set_tests_properties(${test_name} PROPERTIES LABELS perf)
+ endfunction()
+ 
+-set(TEST_LINK_LIBS ModelLib PerfLib)
++set(TEST_LINK_LIBS ModelLib PerfLib ONNX::onnx_proto ONNX::onnx)
+ 
+ add_perf_unittest(PerfGemm
+   PerfGemm.cpp
+--- test/unit/BType/CMakeLists.txt	2025-12-11 13:41:47.353734314 -0500
++++ test/unit/BType/CMakeLists.txt	2025-12-15 18:48:28.875735745 -0500
+@@ -5,4 +5,6 @@
+ 
+   LINK_LIBS PRIVATE
+   OMONNXOps
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/CustomFn/CMakeLists.txt	2025-12-11 13:41:47.353920316 -0500
++++ test/unit/CustomFn/CMakeLists.txt	2025-12-15 18:44:36.620089858 -0500
+@@ -7,4 +7,6 @@
+   OMBuilder
+   OMCompilerPasses
+   OMONNXOps
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/DisposableElementsAttr/CMakeLists.txt	2025-12-11 13:41:47.354104735 -0500
++++ test/unit/DisposableElementsAttr/CMakeLists.txt	2025-12-15 18:48:52.210034612 -0500
+@@ -5,4 +5,6 @@
+ 
+   LINK_LIBS PRIVATE
+   OMONNXOps
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/Einsum/CMakeLists.txt	2025-12-11 13:41:47.354256987 -0500
++++ test/unit/Einsum/CMakeLists.txt	2025-12-15 18:49:22.473402746 -0500
+@@ -5,4 +5,6 @@
+ 
+   LINK_LIBS PRIVATE
+   OMONNXOps
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/Runtime/CMakeLists.txt	2025-12-11 13:41:47.354422698 -0500
++++ test/unit/Runtime/CMakeLists.txt	2025-12-15 18:49:46.463663544 -0500
+@@ -8,4 +8,6 @@
+ 
+   LINK_LIBS PRIVATE
+   cruntime
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/SmallFP/CMakeLists.txt	2025-12-11 13:41:47.354563908 -0500
++++ test/unit/SmallFP/CMakeLists.txt	2025-12-15 18:50:07.478281563 -0500
+@@ -6,4 +6,6 @@
+   LINK_LIBS PRIVATE
+   OMMlirUtilities
+   benchmark
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- test/unit/Strides/CMakeLists.txt	2025-12-11 13:41:47.354697535 -0500
++++ test/unit/Strides/CMakeLists.txt	2025-12-15 18:50:29.309202851 -0500
+@@ -5,4 +5,6 @@
+ 
+   LINK_LIBS PRIVATE
+   OMONNXOps
+-  )
++  ONNX::onnx_proto
++  ONNX::onnx)
++
+--- third_party/stablehlo/stablehlo/integrations/python/CMakeLists.txt	2025-11-01 00:48:26.929018801 -0400
++++ third_party/stablehlo/stablehlo/integrations/python/CMakeLists.txt	2025-11-13 19:56:15.723458619 -0500
+@@ -91,9 +91,11 @@
+ ################################################################################
+ 
+ ## The following options are used specifically for compiling nanobind codebase.
++if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "ARMClang")
+ add_compile_options(-Wno-error=cast-qual -Wno-error=nested-anon-types
+   -Wno-error=extra-semi -Wno-error=zero-length-array
+   -Wno-error=covered-switch-default)
++endif()
+ 
+ declare_mlir_python_sources(CheckPythonExtensions)
+ declare_mlir_python_extension(CheckPythonExtensions.Main
+--- third_party/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp	2025-11-01 00:48:27.022699373 -0400
++++ third_party/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp	2025-11-02 13:55:20.974111541 -0500
+@@ -85,35 +85,34 @@
+ LogicalResult validateStaticShapeResult(PatternRewriter& rewriter,
+                                         Operation* op, ShapedType resultType) {
+   if (!resultType.hasStaticShape())
+-    return rewriter.notifyMatchFailure(
+-        op, "unable to fold dynamically shaped result type to constant");
++    return rewriter.notifyMatchFailure(op,
++                    "unable to fold dynamically shaped result type to constant");
+   return success();
+ }
+ 
+ /// Unary constant folder that uses a generic folder function to handle both
+ /// ints and floats.
+-template <typename Fn, typename IntResultType = IntegerAttr,
+-          typename FloatResultType = FloatAttr>
++template <typename Fn>
+ TypedAttr foldUnaryOpIntOrFloat(Type resultType, TypedAttr operand,
+                                 Fn&& folder) {
+   Type elemTy = getElementTypeOrSelf(operand);
+ 
+   Attribute res;
+   if (isa<IntegerType>(elemTy))
+-    res = constFoldUnaryOp<IntegerAttr, IntegerAttr::ValueType, void,
+-                           IntResultType>(operand, folder);
+-  if (isa<FloatType>(elemTy))
+-    res = constFoldUnaryOp<FloatAttr, FloatAttr::ValueType, void,
+-                           FloatResultType>(operand, folder);
+-  if (res) return cast<TypedAttr>(res);
+-
++    res = constFoldUnaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                           operand, std::forward<Fn>(folder));
++  else if (isa<FloatType>(elemTy))
++    res = constFoldUnaryOp<FloatAttr, FloatAttr::ValueType, void>(
++                           operand, std::forward<Fn>(folder));
++  if (!res)
+   return nullptr;
++
++  return cast<TypedAttr>(res);
+ }
+ 
+ /// Unary constant folder that uses a generic folder function to handle both
+ /// ints and floats.
+-template <typename Fn, typename IntResultType = IntegerAttr,
+-          typename FloatResultType = FloatAttr>
++template <typename Fn>
+ FailureOr<TypedAttr> foldUnaryOpIntOrFloat(PatternRewriter& rewriter,
+                                            Operation* op, Fn&& folder) {
+   if (op->getNumOperands() != 1 || op->getNumResults() != 1)
+@@ -122,24 +121,31 @@
+   TypedAttr attr;
+   matchPattern(op->getOperand(0), m_Constant(&attr));
+ 
+-  if (!attr) return rewriter.notifyMatchFailure(op, "operand not constants");
++  if (!attr)
++    return rewriter.notifyMatchFailure(op, "operand not constants");
+ 
+-  TypedAttr res = foldUnaryOpIntOrFloat<Fn, IntResultType, FloatResultType>(
+-      op->getResultTypes()[0], attr, std::forward<Fn>(folder));
+-  if (!res) return rewriter.notifyMatchFailure(op, "folding failed");
++  TypedAttr res = foldUnaryOpIntOrFloat(op->getResultTypes()[0], attr,
++                                        std::forward<Fn>(folder));
++  if (!res)
++    return rewriter.notifyMatchFailure(op, "folding failed");
+ 
+   return res;
+ }
+ 
+ /// Binary constant folder that uses a generic folder function to handle both
+ /// ints and floats.
+-template <typename Fn, typename IntResultType = IntegerAttr,
+-          typename FloatResultType = FloatAttr>
++template <typename Fn, typename IntResultType, typename FloatResultType>
+ TypedAttr foldBinaryOpIntOrFloat(Type resultType, TypedAttr lhs, TypedAttr rhs,
+                                  Fn&& folder) {
+   Attribute operands[2] = {lhs, rhs};
+   Type elemTy = getElementTypeOrSelf(lhs);
+ 
++  Type lhsType = getElementTypeOrSelf(lhs);
++  Type rhsType = getElementTypeOrSelf(rhs);
++
++  if (lhsType != rhsType)
++    return nullptr;
++
+   Attribute res;
+   if (isa<IntegerType>(elemTy))
+     res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void,
+@@ -147,15 +153,247 @@
+   if (isa<FloatType>(elemTy))
+     res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void,
+                             FloatResultType>(operands, resultType, folder);
+-  if (res) return cast<TypedAttr>(res);
++  if (!res)
++    return nullptr;
++
++  return cast<TypedAttr>(res);
++}
++
++/// Binary constant folder that handles ints
++template <typename Fn, typename IntResultType>
++FailureOr<TypedAttr> foldBinaryOpInt(PatternRewriter& rewriter,
++                                     IntResultType resultType,
++                                     Operation* op, Fn&& folder) {
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operand types are not the same");
++
++  Attribute operands[2] = { lhsAttr, rhsAttr };
++  Attribute res;
++
++  res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                          operands, resultType, std::forward<Fn>(folder));
++  return res ? cast<TypedAttr>(res) : nullptr;
++}
++
++/// Binary constant folder that handles floats
++template <typename Fn, typename FloatResultType>
++FailureOr<TypedAttr> foldBinaryOpFloat(PatternRewriter& rewriter,
++                                       FloatResultType resultType,
++                                       Operation* op, Fn&& folder) {
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operand types are not the same");
++
++  Attribute operands[2] = { lhsAttr, rhsAttr };
++  Attribute res;
++
++  res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                          operands, resultType, std::forward<Fn>(folder));
++  return res ? cast<TypedAttr>(res) : nullptr;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn, typename IntResultType,
++          typename FloatResultType>
++FailureOr<TypedAttr> foldBinaryOpIntOrFloat(PatternRewriter& rewriter,
++                                            IntResultType resultType,
++                                            Operation* op, Fn&& folder) {
++  if (op->getNumOperands() != 2 || op->getNumResults() != 1)
++    return rewriter.notifyMatchFailure(op, "expected binary op");
++
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operand types are not the same");
++
++  TypedAttr res =
++    foldBinaryOpIntOrFloat<Fn, IntResultType, FloatResultType>(
++      resultType, lhsAttr, rhsAttr, std::forward<Fn>(folder));
++  if (!res)
++    return rewriter.notifyMatchFailure(op, "folding failed");
++
++  return res;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn, typename ResultType>
++FailureOr<TypedAttr> foldBinaryOpIntOrFloat(PatternRewriter& rewriter,
++                                            ResultType resultType,
++                                            Operation* op, Fn&& folder) {
++  if (op->getNumOperands() != 2 || op->getNumResults() != 1)
++    return rewriter.notifyMatchFailure(op, "expected binary op");
++
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operand types are not the same");
++
++  if (isa<IntegerType>(lhsType) && isa<IntegerType>(rhsType))
++    return foldBinaryOpInt(rewriter, resultType, op, std::forward<Fn>(folder));
++  else if (isa<FloatType>(lhsType) && isa<FloatType>(rhsType))
++    return foldBinaryOpFloat(rewriter, resultType, op, std::forward<Fn>(folder));
++
++  return failure();
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn>
++TypedAttr
++foldBinaryOpIntOrFloat(Type resultType, TypedAttr lhs, TypedAttr rhs,
++                       Fn&& folder) {
++  Attribute operands[2] = { lhs, rhs };
++  Type elemTy = getElementTypeOrSelf(lhs);
++
++  Type lhsType = getElementTypeOrSelf(lhs);
++  Type rhsType = getElementTypeOrSelf(rhs);
+ 
++  if (lhsType != rhsType)
+   return nullptr;
++
++  Attribute res;
++  if (isa<IntegerType>(elemTy))
++    res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++  else if (isa<FloatType>(elemTy))
++    res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++
++  return res ? cast<TypedAttr>(res) : nullptr;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn>
++std::optional<TypedAttr>
++foldBinaryOpIntOrFloat(Type resultType, const std::optional<TypedAttr>& lhs,
++                       TypedAttr rhs, Fn&& folder) {
++  Attribute operands[2] = { lhs.value(), rhs };
++  Type elemTy = getElementTypeOrSelf(lhs.value());
++
++  Type lhsType = getElementTypeOrSelf(lhs.value());
++  Type rhsType = getElementTypeOrSelf(rhs);
++
++  if (lhsType != rhsType)
++    return std::nullopt;
++
++  if (isa<IntegerType>(elemTy)) {
++    auto res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : std::nullopt;
++  } else if (isa<FloatType>(elemTy)) {
++    auto res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : std::nullopt;
++  }
++
++  return std::nullopt;
+ }
+ 
+ /// Binary constant folder that uses a generic folder function to handle both
+ /// ints and floats.
+-template <typename Fn, typename IntResultType = IntegerAttr,
+-          typename FloatResultType = FloatAttr>
++template <typename Fn>
++std::optional<TypedAttr>
++foldBinaryOpIntOrFloat(Type resultType, TypedAttr lhs,
++                       const std::optional<TypedAttr>& rhs, Fn&& folder) {
++  Attribute operands[2] = { lhs, rhs.value() };
++  Type elemTy = getElementTypeOrSelf(lhs);
++
++  Type lhsType = getElementTypeOrSelf(lhs);
++  Type rhsType = getElementTypeOrSelf(rhs.value());
++
++  if (lhsType != rhsType)
++    return nullptr;
++
++  if (isa<IntegerType>(elemTy)) {
++    auto res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : nullptr;
++  } else if (isa<FloatType>(elemTy)) {
++    auto res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : nullptr;
++  }
++
++  return nullptr;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn>
++std::optional<TypedAttr>
++foldBinaryOpIntOrFloat(Type resultType, const std::optional<TypedAttr>& lhs,
++                       const std::optional<TypedAttr>& rhs, Fn&& folder) {
++  Attribute operands[2] = { lhs.value(), rhs.value() };
++  Type elemTy = getElementTypeOrSelf(lhs.value());
++
++  Type lhsType = getElementTypeOrSelf(lhs.value());
++  Type rhsType = getElementTypeOrSelf(rhs.value());
++
++  if (lhsType != rhsType)
++    return std::nullopt;
++
++  if (isa<IntegerType>(elemTy)) {
++    auto res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : std::nullopt;
++  } else if (isa<FloatType>(elemTy)) {
++    auto res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void>(
++                            operands, resultType, std::forward<Fn>(folder));
++    return res ? cast<TypedAttr>(res) : std::nullopt;
++  }
++
++  return std::nullopt;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn>
+ FailureOr<TypedAttr> foldBinaryOpIntOrFloat(PatternRewriter& rewriter,
+                                             Operation* op, Fn&& folder) {
+   if (op->getNumOperands() != 2 || op->getNumResults() != 1)
+@@ -166,11 +404,53 @@
+   matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
+ 
+   if (!lhsAttr || !rhsAttr)
+-    return rewriter.notifyMatchFailure(op, "lhs & rhs operands not constants");
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
+ 
+-  TypedAttr res = foldBinaryOpIntOrFloat<Fn, IntResultType, FloatResultType>(
+-      op->getResultTypes()[0], lhsAttr, rhsAttr, std::forward<Fn>(folder));
+-  if (!res) return rewriter.notifyMatchFailure(op, "folding failed");
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not of the same type");
++
++  auto res = foldBinaryOpIntOrFloat(op->getResultTypes()[0], lhsAttr, rhsAttr,
++                                    folder);
++                                    // std::forward<Fn>(folder));
++  if (!res)
++    return rewriter.notifyMatchFailure(op, "folding failed");
++
++  return res;
++}
++
++/// Binary constant folder that uses a generic folder function to handle both
++/// ints and floats.
++template <typename Fn, typename ResultType>
++FailureOr<TypedAttr> foldBinaryOpIntOrFloat(PatternRewriter& rewriter,
++                                            Operation* op,
++                                            ResultType resultType,
++                                            Fn&& folder) {
++  if (op->getNumOperands() != 2 || op->getNumResults() != 1)
++    return rewriter.notifyMatchFailure(op, "expected binary op");
++
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not of the same type");
++
++  auto res = foldBinaryOpIntOrFloat(resultType, lhsAttr, rhsAttr, folder);
++  if (!res)
++    return rewriter.notifyMatchFailure(op, "folding failed");
+ 
+   return res;
+ }
+@@ -183,7 +463,7 @@
+   auto result = constFoldCastOp<AttrElementT, TargetAttrElementT,
+                                 typename AttrElementT::ValueType,
+                                 typename TargetAttrElementT::ValueType, void>(
+-      elements, resType, calculate);
++      elements, resType, std::forward<CalculationT>(calculate));
+ 
+   if (!result) {
+     return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
+@@ -304,6 +584,7 @@
+       if (hasAnyDeclaredSideEffects(&nestedOp)) return true;
+     }
+   }
++
+   return false;
+ }
+ 
+@@ -322,20 +603,18 @@
+                        PatternBenefit benefit = 1,
+                        ArrayRef<StringRef> generatedNames = {}) = delete;
+ 
+-  const StablehloAggressiveFolderPassOptions& options;
+-
+   LogicalResult validateElementCountForFold(PatternRewriter& rewriter,
+                                             Operation* op,
+                                             ShapedType resultType) const {
+     size_t numElems = resultType.getNumElements();
+     if (numElems > static_cast<size_t>(options.foldOpElementLimit))
+-      return rewriter.notifyMatchFailure(
+-          op,
+-          "too many elements, fold "
+-          "limit is " +
++      return rewriter.notifyMatchFailure(op,
++                      "too many elements, fold limit is " +
+               std::to_string(options.foldOpElementLimit));
+     return success();
+   }
++
++  const StablehloAggressiveFolderPassOptions& options;
+ };
+ 
+ namespace fold_unary {
+@@ -458,8 +737,8 @@
+     std::optional<APInt> FoldAsIntType(APInt operand) const {
+       const size_t bitWidth = operand.getBitWidth();
+ 
+-      auto convertResult = [&](std::optional<ComputationDataType> result)
+-          -> std::optional<APInt> {
++      auto convertResult =
++        [&](std::optional<ComputationDataType> result) -> std::optional<APInt> {
+         if (result == std::nullopt) return std::nullopt;
+         return APInt(bitWidth, *result, isSignedInt);
+       };
+@@ -515,7 +794,9 @@
+     } else {
+       return failure();
+     }
+-    if (failed(result)) return failure();
++
++    if (failed(result))
++      return failure();
+ 
+     rewriter.replaceOpWithNewOp<ConstantOp>(op, result.value());
+     return success();
+@@ -628,17 +909,33 @@
+     if (failed(validateShapeFoldDtype(rewriter, op, resultType)))
+       return failure();
+ 
+-    auto res = foldBinaryOpIntOrFloat<FoldCompare, IntegerAttr, IntegerAttr>(
+-        rewriter, op,
+-        FoldCompare(op.getComparisonDirection(), op.getCompareType()));
+-    if (failed(res)) return failure();
++  TypedAttr lhsAttr, rhsAttr;
++  matchPattern(op->getOperand(0), m_Constant(&lhsAttr));
++  matchPattern(op->getOperand(1), m_Constant(&rhsAttr));
++
++  if (!lhsAttr || !rhsAttr)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not constants");
++
++  Type lhsType = getElementTypeOrSelf(lhsAttr);
++  Type rhsType = getElementTypeOrSelf(rhsAttr);
++
++  if (lhsType != rhsType)
++    return rewriter.notifyMatchFailure(op,
++                    "lhs and rhs operands are not of the same type");
++
++  auto res = foldBinaryOpIntOrFloat(rewriter, resultType, op,
++                                    FoldCompare(op.getComparisonDirection(),
++                                                op.getCompareType()));
++    if (failed(res))
++      return failure();
++
+     rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+     return success();
+   }
+ 
+   struct FoldCompare {
+-    FoldCompare(ComparisonDirection direction,
+-                std::optional<ComparisonType> kind)
++    FoldCompare(ComparisonDirection direction, std::optional<ComparisonType> kind)
+         : direction(direction), kind(kind) {}
+     ComparisonDirection direction;
+     std::optional<ComparisonType> kind;

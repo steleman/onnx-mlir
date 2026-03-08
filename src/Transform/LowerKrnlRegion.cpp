@@ -11,7 +11,6 @@
 // This pass enables the lowering of the krnl.region operation
 //
 //===----------------------------------------------------------------------===//
-#include "mlir/Transforms/Passes.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -26,13 +25,6 @@ using namespace mlir;
 using namespace onnx_mlir::krnl;
 
 namespace {
-
-#define GEN_PASS_DEF_LOWERKRNLREGIONPASS
-#include "src/Transform/PassesKrnl.h.inc"
-
-/* All the implementation of this pass is put in the anonymous name space
- * to hide from ourside.
- */
 
 /*!
  Move the ops in KrnlRegionOp out of its region and then erase KrnlRegionOp
@@ -61,9 +53,15 @@ public:
  *  Function pass that lowers KrnlRegionOp
  */
 class LowerKrnlRegionPass
-    : public impl::LowerKrnlRegionPassBase<LowerKrnlRegionPass> {
+    : public PassWrapper<LowerKrnlRegionPass, OperationPass<func::FuncOp>> {
 public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerKrnlRegionPass)
+
+  StringRef getArgument() const override { return "lower-krnl-region"; }
+
+  StringRef getDescription() const override {
+    return "Move ops in krnl.region operation out and erase this op";
+  }
 
   void runOnOperation() override {
     auto function = getOperation();

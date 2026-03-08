@@ -93,9 +93,9 @@ public:
   using OpAdaptor = typename ONNXConvOp::Adaptor;
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
+    OpAdaptor adaptor(operands, op->getAttrDictionary());
     auto loc = op->getLoc();
-    auto convOp = mlir::dyn_cast<ONNXConvOp>(op);
-    OpAdaptor adaptor(operands, convOp);
+    auto convOp = llvm::cast<ONNXConvOp>(op);
 
     TosaBuilder tosaBuilder(rewriter, loc);
 

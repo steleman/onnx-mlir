@@ -30,7 +30,7 @@ LogicalResult ONNXGemmOpShapeHelper::computeShape() {
   DimsExpr outputDims;
 
   // Get info.
-  ONNXGemmOp gemmOp = mlir::dyn_cast<ONNXGemmOp>(op);
+  ONNXGemmOp gemmOp = llvm::cast<ONNXGemmOp>(op);
   ONNXGemmOpAdaptor operandAdaptor(operands);
   Value A = operandAdaptor.getA();
   Value B = operandAdaptor.getB();

@@ -1,0 +1,95 @@
+# Script to find the Protobuf header files and libraries.
+# Defines the following:
+#   Protobuf_FOUND       - if the package is found
+#   Protobuf_INCLUDE_DIR - the directory for 'nvtx3'
+#   Protobuf_LIBRARIES   - the libraries needed to linked for using Protobuf
+#
+
+include(FindPackageHandleStandardArgs)
+# unset(Protobuf_FOUND)
+
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+find_path(_Protobuf_INCLUDE_DIR
+          NAMES
+          service.h
+          HINTS
+          /usr/local/include
+          /usr/local/include/google
+          /usr/local/include/google/protobuf
+          PATHS
+          /usr/local/include
+          PATHS_SUFFIXES google/protobuf google)
+endif()
+
+message(STATUS "1. _Protobuf_INCLUDE_DIR: ${_Protobuf_INCLUDE_DIR}")
+set(Protobuf_INCLUDE_DIR ${_Protobuf_INCLUDE_DIR})
+
+if (NOT DEFINED Protobuf_INCLUDE_DIR OR Protobuf_INCLUDE_DIR STREQUAL "")
+  message(FATAL_ERROR "Could not find Protobuf_INCLUDE_DIR.")
+endif()
+
+set(Protobuf_INCLUDE_DIR ${Protobuf_INCLUDE_DIR})
+message(STATUS "2. Protobuf_INCLUDE_DIR: ${Protobuf_INCLUDE_DIR}")
+
+find_package_handle_standard_args(Protobuf DEFAULT_MSG Protobuf_INCLUDE_DIR)
+
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+find_path(_Protobuf_LIBRARY_DIR
+          NAMES
+          libprotobuf.dylib
+          HINTS
+          /usr/local/lib
+          PATHS
+          /usr/local/lib)
+endif()
+
+message(STATUS "1. _Protobuf_LIBRARY_DIR: ${_Protobuf_LIBRARY_DIR}")
+set(Protobuf_LIBRARY_DIR ${_Protobuf_LIBRARY_DIR})
+
+if (NOT DEFINED Protobuf_LIBRARY_DIR OR Protobuf_LIBRARY_DIR STREQUAL "")
+  message(FATAL_ERROR "Could not find Protobuf_LIBRARY_DIR.")
+endif()
+
+set(Protobuf_LIBRARY_DIR ${Protobuf_LIBRARY_DIR})
+message(STATUS "2. Protobuf_LIBRARY_DIR: ${Protobuf_LIBRARY_DIR}")
+
+find_package_handle_standard_args(Protobuf DEFAULT_MSG Protobuf_LIBRARY_DIR)
+
+set(PROTOBUF_LIBRARY "${Protobuf_LIBRARY_DIR}/libprotobuf.dylib")
+set(PROTOBUF_LITE_LIBRARY "${Protobuf_LIBRARY_DIR}/libprotobuf-lite.dylib")
+
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+find_program(Protobuf_PROTOC_EXECUTABLE
+          NAMES
+          protoc
+          PATHS
+          /usr/local/bin)
+endif()
+
+message(STATUS "1. Protobuf_PROTOC_EXECUTABLE: ${Protobuf_PROTOC_EXECUTABLE}")
+
+if (NOT DEFINED Protobuf_PROTOC_EXECUTABLE OR Protobuf_PROTOC_EXECUTABLE STREQUAL "")
+  message(FATAL_ERROR "Could not find Protobuf_PROTOC_EXECUTABLE.")
+endif()
+
+set(Protobuf_PROTOC_EXECUTABLE ${Protobuf_PROTOC_EXECUTABLE})
+message(STATUS "2. Protobuf_PROTOC_EXECUTABLE: ${Protobuf_PROTOC_EXECUTABLE}")
+
+# set external variables for usage in CMakeLists.txt
+if (Protobuf_FOUND)
+  message(STATUS "Found Protobuf.")
+  message(STATUS "3. Protobuf_INCLUDE_DIR: ${Protobuf_INCLUDE_DIR}")
+  message(STATUS "3. Protobuf_LIBRARY_DIR: ${Protobuf_LIBRARY_DIR}")
+  message(STATUS "3. Protobuf_PROTOC_EXECUTABLE: ${Protobuf_PROTOC_EXECUTABLE}")
+  set(Protobuf_FOUND True)
+  set(Protobuf_INCLUDE_DIR ${Protobuf_INCLUDE_DIR})
+  set(Protobuf_LIBRARY_DIR ${Protobuf_LIBRARY_DIR})
+  mark_as_advanced(Protobuf_INCLUDE_DIR)
+  mark_as_advanced(Protobuf_LIBRARY_DIR)
+  mark_as_advanced(Protobuf_PROTOC_EXECUTABLE)
+  mark_as_advanced(PROTOBUF_LIBRARY)
+  mark_as_advanced(PROTOBUF_LITE_LIBRARY)
+else()
+  message(FATAL_ERROR "Protobuf not found.")
+endif()
+

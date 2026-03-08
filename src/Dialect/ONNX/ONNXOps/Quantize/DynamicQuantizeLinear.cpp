@@ -27,8 +27,8 @@ namespace onnx_mlir {
 
 template <>
 LogicalResult ONNXDynamicQuantizeLinearOpShapeHelper::computeShape() {
-  auto dqlOp = mlir::dyn_cast<ONNXDynamicQuantizeLinearOp>(op);
-  ONNXDynamicQuantizeLinearOpAdaptor operandAdaptor(operands, dqlOp);
+  ONNXDynamicQuantizeLinearOpAdaptor operandAdaptor(
+      operands, op->getAttrDictionary());
 
   // Dim of y are the same as x.
   DimsExpr outputDims;

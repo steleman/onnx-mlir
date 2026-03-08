@@ -4,7 +4,7 @@
 
 //===---------- NNPAPasses.hpp - NNPA Passes Definition ------------------===//
 //
-// Copyright 2019-2026 The IBM Research Authors.
+// Copyright 2019-2025 The IBM Research Authors.
 //
 // =============================================================================
 //
@@ -25,8 +25,6 @@ namespace onnx_mlir {
 /// Add pass for device placement.
 std::unique_ptr<mlir::Pass> createDevicePlacementPass();
 std::unique_ptr<mlir::Pass> createDevicePlacementPass(
-    NNPAPlacementHeuristic placementHeuristic);
-std::unique_ptr<mlir::Pass> createDevicePlacementPass(
     std::string loadConfigFile, std::string saveConfigFile,
     NNPAPlacementHeuristic placementHeuristic);
 
@@ -34,11 +32,6 @@ std::unique_ptr<mlir::Pass> createDevicePlacementPass(
 std::unique_ptr<mlir::Pass> createQuantOpSelectionPass();
 std::unique_ptr<mlir::Pass> createQuantOpSelectionPass(
     std::string loadConfigFile, std::string saveConfigFile);
-
-/// Add pass for generating configuration file from IR.
-std::unique_ptr<mlir::Pass> createGenerateConfigFilePass();
-std::unique_ptr<mlir::Pass> createGenerateConfigFilePass(
-    std::string outputConfigFile);
 
 /// Add pass for lowering ONNX ops to ZHigh ops.
 std::unique_ptr<mlir::Pass> createONNXToZHighPass();
@@ -84,8 +77,7 @@ namespace zlow {
 std::unique_ptr<mlir::Pass> createZLowRewritePass();
 
 /// Add pass for rewriting ZLow ops.
-std::unique_ptr<mlir::Pass> createZLowStickOptimizationPass(
-    bool enableStickExpansion = true, bool enableAllocNormalization = false,
+std::unique_ptr<mlir::Pass> createZLowStickExpansionPass(
     bool enableParallel = false);
 
 /// Add pass for rewriting ZLow ops.

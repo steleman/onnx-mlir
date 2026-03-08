@@ -24,8 +24,7 @@ namespace onnx_mlir {
 
 template <>
 LogicalResult ONNXShapeTransformOpShapeHelper::computeShape() {
-  auto shapeTransformOp = mlir::dyn_cast<ONNXShapeTransformOp>(op);
-  ONNXShapeTransformOpAdaptor operandAdaptor(operands, shapeTransformOp);
+  ONNXShapeTransformOpAdaptor operandAdaptor(operands, op->getAttrDictionary());
   Value input = operandAdaptor.getInput();
   AffineMap indexMap = operandAdaptor.getIndexMap();
 

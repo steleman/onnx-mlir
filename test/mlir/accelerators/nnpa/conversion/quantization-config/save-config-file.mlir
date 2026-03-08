@@ -9,39 +9,21 @@ func.func @test_save_config_file(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // CHECK-LABEL test_save_config_file
 // CHECK: {
-// CHECK:   "nnpa_ops_config": [
+// CHECK:   "quantization": [
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.MatMul",
-// CHECK:           "onnx_node_name": "MatMul_0"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "quantize": false
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "node_type": "onnx.MatMul",
+// CHECK:       "onnx_node_name": "MatMul_0",
+// CHECK:       "quantize": false
 // CHECK:     },
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.MatMul",
-// CHECK:           "onnx_node_name": "MatMul_1"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "quantize": true
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "node_type": "onnx.MatMul",
+// CHECK:       "onnx_node_name": "MatMul_1",
+// CHECK:       "quantize": true
 // CHECK:     },
 // CHECK:     {
-// CHECK:       "pattern": {
-// CHECK:         "match": {
-// CHECK:           "node_type": "onnx.MatMul",
-// CHECK:           "onnx_node_name": "MatMul_2"
-// CHECK:         },
-// CHECK:         "rewrite": {
-// CHECK:           "quantize": false
-// CHECK:         }
-// CHECK:       }
+// CHECK:       "node_type": "onnx.MatMul",
+// CHECK:       "onnx_node_name": "MatMul_2",
+// CHECK:       "quantize": false
 // CHECK:     }
 // CHECK:   ]
 // CHECK: }

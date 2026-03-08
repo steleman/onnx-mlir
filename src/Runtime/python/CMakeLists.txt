@@ -2,13 +2,21 @@
 
 file(GENERATE
   OUTPUT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/PyRuntime.py
-  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py
-  )
+  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py)
 
 file(GENERATE
-  OUTPUT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/PyOMCompile.py
-  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyOMCompile.py
-  )
+  OUTPUT ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/PyCompileAndRuntime.py
+  INPUT ${CMAKE_CURRENT_SOURCE_DIR}/PyCompileAndRuntime.py)
+
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  include(ONNXTargets)
+  add_compile_options(-I${ONNX_INCLUDE_DIR})
+  add_definitions(-DONNX_ML=1)
+  add_definitions(-DONNX_NAMESPACE=onnx)
+  add_definitions(-DUSE_ML=1)
+  add_compile_options(-L${ONNX_LIBRARY_DIR})
+  add_compile_options(-Wl,-rpath,${ONNX_LIBRARY_DIR})
+endif()
 
 # TODO: Remove pybind11::python_link_helper after cmake version bumped to 3.16+
 if(NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
@@ -21,8 +29,7 @@ if(NOT ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
     OMExecutionSession
     OMMlirUtilities
     pybind11::embed
-    pybind11::python_link_helper
-    )
+    pybind11::python_link_helper)
 else()
   add_compile_definitions(ENABLE_PYRUNTIME_LIGHT)
   add_onnx_mlir_library(OMPyExecutionSessionBase
@@ -32,38 +39,40 @@ else()
 
     LINK_LIBS PUBLIC
     OMExecutionSession
-    # ToFix: OMMlirUtilities used for float16 is temporarily excluded because
-    # it need some support from LLVM.
-    #OMMlirUtilities
     pybind11::embed
-    pybind11::python_link_helper
-  )
+    pybind11::python_link_helper)
 endif()
-
-# Refer to onnx-mlir/CMakeList.txt
-# Since PyExecutionSessionBase include onnx/onnx_pb.h, absl lib may be needed.
-# Another solution is to simply add onnx into link library, which was tested 
-# and proven. This solution seems more elegant to me.
-# However, not sure whether it is too much to link onnx to PyRuntimeC, though
-# third_party/onnx is built in both normal and light-weight driver
-#if (absl_FOUND)
-#  message(STATUS "absl found and add it the dependent library for OMPyExecutionSessionBase")
-#  target_link_libraries(OMPyExecutionSessionBase PUBLIC
-#    absl::log_internal_check_op
-#    absl::log_internal_message
-#    absl::status
-#    )
-#endif()
 
 if(MSVC)
   target_link_libraries(OMPyExecutionSessionBase
-    PRIVATE pybind11::windows_extras
-  )
+    PRIVATE pybind11::windows_extras)
 endif()
+
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
+         CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
+  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
+         CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
+  message(STATUS "python: CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}")
+  message(STATUS "python: CMAKE_MODULE_LINKER_FLAGS: ${CMAKE_MODULE_LINKER_FLAGS}")
+endif()
+
 set_target_properties(OMPyExecutionSessionBase
   PROPERTIES
-  POSITION_INDEPENDENT_CODE TRUE
-  )
+  POSITION_INDEPENDENT_CODE TRUE)
+
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  add_dependencies(OMPyExecutionSessionBase ONNX::onnx_proto ONNX::onnx)
+else()
+  add_dependencies(OMPyExecutionSessionBase onnx)
+  target_compile_definitions(OMPyExecutionSessionBase
+                             PRIVATE
+                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
+
+  target_include_directories(OMPyExecutionSessionBase
+                             PRIVATE
+                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
+endif()
 
 # When running on ubi8 image, shared lib backend tests fail with
 # the following error:
@@ -93,38 +102,43 @@ set_target_properties(OMPyExecutionSessionBase
 # which we add back through target_compile_definitions and
 # target_include_directories.
 pybind11_add_module(PyRuntimeC PyExecutionSession.cpp)
-target_compile_options(PyRuntimeC
-  PRIVATE
+
+target_compile_options(PyRuntimeC PRIVATE
   $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
-  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>
-  )
+  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>)
+
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  add_dependencies(PyRuntimeC ONNX::onnx_proto ONNX::onnx)
+else()
+  add_dependencies(PyRuntimeC onnx)
+  target_compile_definitions(PyRuntimeC
+                             PRIVATE
+                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
+
+  target_include_directories(PyRuntimeC
+                             PRIVATE
+                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
+endif()
+
 target_link_libraries(PyRuntimeC
   PRIVATE
   OMPyExecutionSessionBase
-  )
+  onnx_proto
+  onnx)
+
 llvm_update_compile_flags(PyRuntimeC)
 
-install(TARGETS PyRuntimeC
-  DESTINATION lib
-  )
+if (APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
+         CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
+  string(REPLACE "-flat_namespace" "-undefined -Wl,dynamic_lookup"
+         CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
+  message(STATUS "python: CMAKE_SHARED_LINKER_FLAGS: ${CMAKE_SHARED_LINKER_FLAGS}")
+  message(STATUS "python: CMAKE_MODULE_LINKER_FLAGS: ${CMAKE_MODULE_LINKER_FLAGS}")
+endif()
 
-# Target to prepare OMPyInfer package
-add_custom_target(OMCreateOMPyInferPackage
-        COMMAND rm -rf ${CMAKE_CURRENT_BINARY_DIR}/OMPyInfer
-        COMMAND cp -r ${CMAKE_CURRENT_SOURCE_DIR}/OMPyInfer ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/OMPyInfer/src/OMPyInfer/libs
-        COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/OMPyInfer/src/OMPyInfer/libs
-        DEPENDS PyRuntimeC
-     )
 
-# Target to run OMPyInfer package with newly built PyRuntimeC, not the new
-# model.so yet.
-add_custom_target(OMTestOMPyInferPackage
-        COMMAND pip uninstall -y OMPyInfer 
-        COMMAND pip install -e ${CMAKE_CURRENT_BINARY_DIR}/OMPyInfer
-        COMMAND python ${CMAKE_CURRENT_BINARY_DIR}/OMPyInfer/tests/helloworld.py
-        DEPENDS OMCreateOMPyInferPackage
-     )
+install(TARGETS PyRuntimeC DESTINATION lib)
 
 # Target to prepare onnxmlir package
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/libs)
@@ -134,18 +148,16 @@ add_custom_target(OMCreatePyRuntimePackage
         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirdocker.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/
         COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir
         COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/onnxmlir/src/onnxmlir/libs
-        DEPENDS PyRuntimeC
-     )
+        DEPENDS PyRuntimeC)
 
-# Target to prepare torch_onnxmlir package
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/torch_onnxmlir/src/torch_onnxmlir/libs)
-add_custom_target(OMCreateTorchONNXMLIRPackage
-        COMMAND cp -r ${CMAKE_CURRENT_SOURCE_DIR}/torch_onnxmlir ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/torch_onnxmlir/src/torch_onnxmlir/libs
-        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirdocker.py ${CMAKE_CURRENT_BINARY_DIR}/torch_onnxmlir/src/torch_onnxmlir
-        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py ${CMAKE_CURRENT_BINARY_DIR}/torch_onnxmlir/src/torch_onnxmlir
-        DEPENDS PyRuntimeC
-     )
+# Target to prepare onnxmlirtorch package
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch/libs)
+add_custom_target(OMCreateONNXMLIRTorchPackage
+        COMMAND cp -r ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirtorch ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND cp ${ONNX_MLIR_BIN_ROOT}/${CMAKE_BUILD_TYPE}/lib/PyRuntimeC.*.so ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch/libs
+        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/onnxmlirdocker.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch
+        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/PyRuntime.py ${CMAKE_CURRENT_BINARY_DIR}/onnxmlirtorch/src/onnxmlirtorch
+        DEPENDS PyRuntimeC)
 
 if(ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
   # Since the compiler is not built when PYRUNTIME_LIGHT is enabled,
@@ -153,29 +165,41 @@ if(ONNX_MLIR_ENABLE_PYRUNTIME_LIGHT)
   return()
 endif()
 
-pybind11_add_module(PyOMCompileC PyOMCompile.cpp)
-add_dependencies(PyOMCompileC onnx)
-target_compile_options(PyOMCompileC
-  PRIVATE
-  $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
-  $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>
-  )
-target_compile_definitions(PyOMCompileC
-  PRIVATE
-  $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>
-  )
-target_include_directories(PyOMCompileC
-  PRIVATE
-  ${ONNX_MLIR_SRC_ROOT}/include
-  $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>
-  )
-target_link_libraries(PyOMCompileC
-  PRIVATE
-  OMCompile
-  )
-llvm_update_compile_flags(PyOMCompileC)
+pybind11_add_module(PyCompileAndRuntimeC PyOMCompileExecutionSession.cpp)
 
-install(TARGETS PyOMCompileC
-  DESTINATION lib
-  )
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  add_dependencies(PyCompileAndRuntimeC ONNX::onnx_proto ONNX::onnx)
+else()
+  add_dependencies(PyCompileAndRuntimeC onnx)
+endif()
+
+if (ONNX_MLIR_USE_SYSTEM_ONNX)
+  add_dependencies(PyCompileAndRuntimeC ONNX::onnx_proto ONNX::onnx)
+else()
+  target_compile_options(PyCompileAndRuntimeC
+                         PRIVATE
+                         $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-frtti -fexceptions>
+                         $<$<CXX_COMPILER_ID:MSVC>:/EHsc /GR>)
+
+  target_compile_definitions(PyCompileAndRuntimeC
+                             PRIVATE
+                             $<TARGET_PROPERTY:onnx,COMPILE_DEFINITIONS>)
+
+  target_include_directories(PyCompileAndRuntimeC
+                             PRIVATE
+                             ${ONNX_MLIR_SRC_ROOT}/include
+                             $<TARGET_PROPERTY:onnx,INCLUDE_DIRECTORIES>)
+endif()
+
+target_link_libraries(PyCompileAndRuntimeC
+  PRIVATE
+  OMCompiler
+  OMPyExecutionSessionBase
+  onnx_proto
+  onnx)
+
+llvm_update_compile_flags(PyCompileAndRuntimeC)
+
+install(TARGETS PyCompileAndRuntimeC
+  DESTINATION lib)
 

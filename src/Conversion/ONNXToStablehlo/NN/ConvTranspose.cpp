@@ -64,8 +64,9 @@ struct ONNXConvTransposeOpLoweringToStablehlo : public ConversionPattern {
   LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
 
+    ONNXConvTransposeOpAdaptor operandAdaptor(
+        operands, op->getAttrDictionary());
     ONNXConvTransposeOp convOp = llvm::dyn_cast<ONNXConvTransposeOp>(op);
-    ONNXConvTransposeOpAdaptor operandAdaptor(operands, convOp);
     Location loc = op->getLoc();
 
     IndexExprBuilderForStablehlo createIE(rewriter, loc);

@@ -813,9 +813,6 @@ struct ZHighToZLowUnstickOpLowering : public ConversionPattern {
         convertZTensorToMemRefType(*op->result_type_begin());
 
     // Allocate a buffer for the result MemRef.
-    // Since march=arch15, HW Stick/Unstick may be more efficient with 4k
-    // allocated pages for CPU data as well, or ensure that allocated data here
-    // is 4K aligned.
     Value alloc = nullptr;
     if (isNHWCLayout(layout)) {
       if (!nnpaDisableCompilerStickUnstick) {
@@ -840,10 +837,8 @@ struct ZHighToZLowUnstickOpLowering : public ConversionPattern {
       }
     }
     if (alloc == nullptr)
-      // Memory for output (which is not in stick format) so use normal
-      // alignment.
-      alloc = insertAllocForZMemRef(zMemRefType, shapeHelper.getOutputDims(),
-          op, rewriter, MemRefBuilder::defaultAlign);
+      alloc = insertAllocForZMemRef(
+          zMemRefType, shapeHelper.getOutputDims(), op, rewriter);
 
     // Emit a ZLow operation.
     ZLowUnstickOp::create(rewriter, loc, input, alloc, layout);
